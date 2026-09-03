@@ -67,7 +67,7 @@ const fallbackMovies: Movie[] = [
     runtime: '2h 46m',
     rating: 8.5,
     genres: ['Sci-fi', 'Adventure'],
-    moods: ['Epic', 'Intense'],
+    moods: ['Epic', 'Intense', 'Adventurous'],
     description: 'A sweeping desert odyssey about power, prophecy, and the cost of becoming a symbol.',
     poster: 'https://image.tmdb.org/t/p/w780/1pdfLvkbY9ohJlCjQH2CZjjYVvJ.jpg',
   },
@@ -78,7 +78,7 @@ const fallbackMovies: Movie[] = [
     runtime: '1h 46m',
     rating: 8.1,
     genres: ['Drama', 'Romance'],
-    moods: ['Tender', 'Thoughtful'],
+    moods: ['Tender', 'Thoughtful', 'Romantic'],
     description: 'Two childhood friends reunite in New York for a quietly devastating week of possibility.',
     poster: 'https://image.tmdb.org/t/p/w780/k3waqVXSnvCZWfJYNtdamTgTtTA.jpg',
   },
@@ -89,7 +89,7 @@ const fallbackMovies: Movie[] = [
     runtime: '2h 20m',
     rating: 8.6,
     genres: ['Animation', 'Adventure'],
-    moods: ['Fun', 'Epic'],
+    moods: ['Fun', 'Epic', 'Adventurous', 'Inspiring'],
     description: 'A dazzling leap through dimensions, powered by heart, kinetic art, and impossible choices.',
     poster: 'https://image.tmdb.org/t/p/w780/8Vt6mWEReuy4Of61Lnj5Xj704m8.jpg',
   },
@@ -100,7 +100,7 @@ const fallbackMovies: Movie[] = [
     runtime: '1h 40m',
     rating: 8.1,
     genres: ['Comedy', 'Drama'],
-    moods: ['Cozy', 'Fun'],
+    moods: ['Cozy', 'Fun', 'Relaxed'],
     description: 'A meticulously composed caper full of loyalty, pastries, stolen art, and old-world charm.',
     poster: 'https://image.tmdb.org/t/p/w780/eWdyYQreja6JGCzqHWXpWHDrrPo.jpg',
   },
@@ -111,7 +111,7 @@ const fallbackMovies: Movie[] = [
     runtime: '1h 56m',
     rating: 8.0,
     genres: ['Sci-fi', 'Drama'],
-    moods: ['Thoughtful', 'Emotional'],
+    moods: ['Thoughtful', 'Emotional', 'Mysterious', 'Inspiring'],
     description: 'A linguist races to understand visitors whose language changes how time itself is seen.',
     poster: 'https://image.tmdb.org/t/p/w780/x2FJsf1ElAgr63Y3PNPtJrcmpoe.jpg',
   },
@@ -122,7 +122,7 @@ const fallbackMovies: Movie[] = [
     runtime: '2h 21m',
     rating: 8.0,
     genres: ['Fantasy', 'Comedy'],
-    moods: ['Bold', 'Surreal'],
+    moods: ['Bold', 'Surreal', 'Mysterious'],
     description: 'A fearless, lavishly strange journey of discovery through a world of appetites and ideas.',
     poster: 'https://image.tmdb.org/t/p/w780/kCGlIMc9J50w9wxa7iTQlPd8k.jpg',
   },
@@ -133,7 +133,7 @@ const fallbackMovies: Movie[] = [
     runtime: '2h 13m',
     rating: 7.9,
     genres: ['Comedy', 'Drama'],
-    moods: ['Cozy', 'Emotional'],
+    moods: ['Cozy', 'Emotional', 'Relaxed', 'Inspiring'],
     description: 'A grumpy teacher, a stranded student, and a grieving cook find warmth over winter break.',
     poster: 'https://image.tmdb.org/t/p/w780/VHSzNBTwxV8vh7wylo7O9CLdac.jpg',
   },
@@ -144,13 +144,25 @@ const fallbackMovies: Movie[] = [
     runtime: '3h 00m',
     rating: 8.4,
     genres: ['Drama', 'History'],
-    moods: ['Intense', 'Thoughtful'],
+    moods: ['Intense', 'Thoughtful', 'Mysterious'],
     description: 'A propulsive portrait of ambition, consequence, and the man at the center of a new age.',
     poster: 'https://image.tmdb.org/t/p/w780/8Gxv8gSFCU0XGDykEGv7zR1n2ua.jpg',
   },
 ];
 
-const moods = ['Cozy', 'Fun', 'Intense', 'Thoughtful', 'Emotional', 'Surreal'];
+const moods = [
+  'Cozy',
+  'Fun',
+  'Intense',
+  'Thoughtful',
+  'Emotional',
+  'Surreal',
+  'Relaxed',
+  'Romantic',
+  'Adventurous',
+  'Mysterious',
+  'Inspiring',
+];
 const genres = ['All', 'Action', 'Adventure', 'Animation', 'Comedy', 'Crime', 'Drama', 'Family', 'Fantasy', 'Mystery', 'Romance', 'Sci-fi', 'Thriller'];
 const fallbackTrending = [...fallbackMovies].sort((a, b) => b.rating - a.rating);
 const watchlistStorageKey = 'reelgood-watchlist:v1';
@@ -176,13 +188,22 @@ function formatRuntime(minutes: number) {
   return `${hours ? `${hours}h ` : ''}${remainder ? `${remainder}m` : ''}`.trim();
 }
 
+function createRecommendationSeed() {
+  return `${Date.now()}-${Math.random()}`;
+}
+
+function pickRandomMovie(items: Movie[]) {
+  return items[Math.floor(Math.random() * items.length)];
+}
+
 export default function Home() {
   const [mood, setMood] = useState('Thoughtful');
   const [genre, setGenre] = useState('All');
   const [query, setQuery] = useState('');
   const [saved, setSaved] = useState<number[]>([]);
   const [homeShelves, setHomeShelves] = useState<HomeShelves | null>(null);
-  const [moodResults, setMoodResults] = useState<Movie[] | null>(null);
+  const [featuredMovie, setFeaturedMovie] = useState<Movie | null>(null);
+  const [featuredPool, setFeaturedPool] = useState<Movie[]>(fallbackMovies);
   const [searchResults, setSearchResults] = useState<Movie[] | null>(null);
   const [isLive, setIsLive] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -196,6 +217,7 @@ export default function Home() {
   const [details, setDetails] = useState<MovieDetails | null>(null);
   const [detailsLoading, setDetailsLoading] = useState(false);
   const catalogRef = useRef<Movie[]>(fallbackMovies);
+  const featuredRequestRef = useRef(0);
 
   useEffect(() => {
     let timer: number | undefined;
@@ -217,6 +239,11 @@ export default function Home() {
       })
       .then((data) => {
         setHomeShelves(data);
+        if (featuredRequestRef.current === 0) {
+          const initialPool = data.topPicks.length ? data.topPicks : data.trending;
+          setFeaturedPool(initialPool);
+          setFeaturedMovie(initialPool[0] ?? fallbackMovies[0]);
+        }
         setIsLive(true);
       })
       .catch(() => setIsLive(false))
@@ -225,17 +252,17 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    if (!isLive || query.trim()) return;
-    const controller = new AbortController();
-    fetch(`/api/tmdb?view=discover&mood=${encodeURIComponent(mood)}&seed=${Date.now()}`, { signal: controller.signal, cache: 'no-store' })
-      .then((response) => {
-        if (!response.ok) throw new Error('DISCOVER_FAILED');
-        return response.json() as Promise<{ results: Movie[] }>;
-      })
-      .then((data) => setMoodResults(data.results))
-      .catch(() => undefined);
-    return () => controller.abort();
-  }, [isLive, mood, query]);
+    if (isSurprising || featuredPool.length < 2) return;
+
+    const timer = window.setInterval(() => {
+      setFeaturedMovie((current) => {
+        const currentIndex = featuredPool.findIndex((movie) => movie.id === current?.id);
+        return featuredPool[(currentIndex + 1 + featuredPool.length) % featuredPool.length];
+      });
+    }, 5000);
+
+    return () => window.clearInterval(timer);
+  }, [featuredPool, isSurprising]);
 
   useEffect(() => {
     const normalizedQuery = query.trim();
@@ -284,14 +311,13 @@ export default function Home() {
         return genreMatch && searchMatch;
       })
       .sort((a, b) => {
-        const score = (movie: Movie) => (movie.moods.includes(mood) ? 3 : 0) + movie.rating / 10;
-        return score(b) - score(a);
+        return b.rating - a.rating;
       });
-  }, [genre, mood, query]);
+  }, [genre, query]);
 
   const unfilteredTopPicks = query.trim().length >= 2
     ? searchResults ?? fallbackRanked
-    : moodResults ?? homeShelves?.topPicks ?? fallbackRanked;
+    : homeShelves?.topPicks ?? fallbackRanked;
   const filterMovies = (items: Movie[]) => items.filter((movie) => {
     const languageMatch = languageFilter === 'All'
       || (languageFilter === 'Bollywood' && movie.language === 'hi')
@@ -299,25 +325,32 @@ export default function Home() {
     const genreMatch = genre === 'All' || movie.genres.includes(genre);
     return languageMatch && genreMatch && movie.rating >= minimumRating;
   });
-  const topPicks = filterMovies(unfilteredTopPicks);
-  const trending = filterMovies(homeShelves?.trending ?? fallbackTrending);
-  const featured = topPicks[0] ?? trending[0] ?? fallbackMovies[0];
+  const topPicks = filterMovies(unfilteredTopPicks).slice(0, 10);
+  const trending = filterMovies(homeShelves?.trending ?? fallbackTrending).slice(0, 10);
+  const featured = featuredMovie ?? topPicks[0] ?? trending[0] ?? fallbackMovies[0];
   const activeFilterCount = Number(languageFilter !== 'All') + Number(genre !== 'All') + Number(minimumRating > 7);
+  const defaultShelves = [
+    { title: 'Top picks for a thoughtful mood', items: topPicks },
+    { title: 'Trending now', items: trending },
+    ...(homeShelves ? [
+      { title: 'Popular tonight', items: filterMovies(homeShelves.popular).slice(0, 10) },
+      { title: 'Now playing in cinemas', items: filterMovies(homeShelves.nowPlaying).slice(0, 10) },
+      { title: 'Fresh releases', items: filterMovies(homeShelves.newReleases).slice(0, 10) },
+      { title: 'Adrenaline rush', items: filterMovies(homeShelves.actionHits).slice(0, 10) },
+      { title: 'Comedy favorites', items: filterMovies(homeShelves.comedyFavorites).slice(0, 10) },
+      { title: 'Sci-fi worlds', items: filterMovies(homeShelves.scifiWorlds).slice(0, 10) },
+      { title: 'Hidden gems', items: filterMovies(homeShelves.hiddenGems).slice(0, 10) },
+    ] : []),
+  ];
+  const combinedFilteredMovies = Array.from(
+    new Map(defaultShelves.flatMap((shelf) => shelf.items).map((movie) => [movie.id, movie])).values(),
+  );
   const shelves = query.trim().length >= 2
     ? [{ title: `Search results for “${query.trim()}”`, items: topPicks }]
-    : [
-        { title: `Top picks for a ${mood.toLowerCase()} mood`, items: topPicks },
-        { title: 'Trending now', items: trending },
-        ...(homeShelves ? [
-          { title: 'Popular tonight', items: filterMovies(homeShelves.popular) },
-          { title: 'Now playing in cinemas', items: filterMovies(homeShelves.nowPlaying) },
-          { title: 'Fresh releases', items: filterMovies(homeShelves.newReleases) },
-          { title: 'Adrenaline rush', items: filterMovies(homeShelves.actionHits) },
-          { title: 'Comedy favorites', items: filterMovies(homeShelves.comedyFavorites) },
-          { title: 'Sci-fi worlds', items: filterMovies(homeShelves.scifiWorlds) },
-          { title: 'Hidden gems', items: filterMovies(homeShelves.hiddenGems) },
-        ] : []),
-      ];
+    : activeFilterCount > 0
+      ? [{ title: 'Movies matching your filters', items: combinedFilteredMovies }]
+      : defaultShelves;
+  const isFilteredView = activeFilterCount > 0 && query.trim().length < 2;
 
   useEffect(() => {
     catalogRef.current = [
@@ -402,25 +435,41 @@ export default function Home() {
     });
   }
 
-  async function surpriseMe() {
+  async function updateFeaturedForMood(nextMood: string) {
+    const requestId = featuredRequestRef.current + 1;
+    featuredRequestRef.current = requestId;
     setIsSurprising(true);
-    setQuery('');
-    setSearchResults(null);
     setSearchError('');
     try {
-      const response = await fetch(`/api/tmdb?view=discover&mood=${encodeURIComponent(mood)}&seed=${Date.now()}`, { cache: 'no-store' });
+      const response = await fetch(`/api/tmdb?view=discover&mood=${encodeURIComponent(nextMood)}&seed=${createRecommendationSeed()}`, { cache: 'no-store' });
       if (!response.ok) throw new Error('SURPRISE_FAILED');
       const data = await response.json() as { results: Movie[] };
-      setMoodResults(data.results);
+      if (requestId !== featuredRequestRef.current) return;
+      const nextMovie = data.results.find((movie) => movie.id !== featured.id) ?? data.results[0];
+      if (nextMovie) {
+        setFeaturedPool(data.results);
+        setFeaturedMovie(nextMovie);
+      }
       setIsLive(true);
     } catch {
-      const matching = fallbackMovies.filter((movie) => movie.moods.includes(mood));
-      setMoodResults((matching.length ? matching : fallbackMovies).sort(() => Math.random() - 0.5));
-      setSearchError('Live picks were unavailable, so we shuffled the curated catalog instead.');
+      if (requestId !== featuredRequestRef.current) return;
+      const matching = fallbackMovies.filter((movie) => movie.moods.includes(nextMood) && movie.id !== featured.id);
+      const pool = matching.length ? matching : fallbackMovies.filter((movie) => movie.id !== featured.id);
+      setFeaturedPool(pool);
+      setFeaturedMovie(pickRandomMovie(pool) ?? fallbackMovies[0]);
+      setSearchError('Live picks were unavailable, so we chose from the curated catalog instead.');
     } finally {
-      setIsSurprising(false);
-      window.setTimeout(() => document.getElementById('recommendations')?.scrollIntoView({ behavior: 'smooth' }), 0);
+      if (requestId === featuredRequestRef.current) setIsSurprising(false);
     }
+  }
+
+  function surpriseMe() {
+    void updateFeaturedForMood(mood);
+  }
+
+  function chooseMood(nextMood: string) {
+    setMood(nextMood);
+    void updateFeaturedForMood(nextMood);
   }
 
   function openMovie(movie: Movie) {
@@ -443,34 +492,34 @@ export default function Home() {
   return (
     <main className="min-h-screen overflow-hidden bg-background text-foreground">
       <div className="ambient-glow" aria-hidden="true" />
-      <header className="netflix-header relative z-20 mx-auto flex h-20 max-w-[1440px] items-center justify-between px-5 sm:px-8 lg:px-12">
+      <header className="netflix-header relative z-20 mx-auto flex h-16 max-w-[1440px] items-center justify-between px-4 sm:h-20 sm:px-8 lg:px-12">
         <a href="#top" className="flex items-center gap-2.5" aria-label="Reelgood home">
           <span className="grid size-9 place-items-center rounded bg-primary text-primary-foreground shadow-[0_0_25px_rgba(229,9,20,.3)]"><Play className="ml-0.5 size-4 fill-current" /></span>
-          <span className="text-xl font-black uppercase tracking-[-0.06em] text-primary">Reelgood</span>
+          <span className="text-lg font-black uppercase tracking-[-0.06em] text-primary sm:text-xl">Reelgood</span>
         </a>
         <nav className="hidden items-center gap-8 text-sm text-muted-foreground md:flex" aria-label="Main navigation">
           <a className="transition-colors hover:text-foreground" href="#recommendations">Discover</a>
           <a className="transition-colors hover:text-foreground" href="#recommendations">Movies</a>
           <a className="transition-colors hover:text-foreground" href="#watchlist">My list <span className="ml-1 text-primary">{saved.length}</span></a>
         </nav>
-        <Button variant="outline" className="h-10 rounded-full border-white/10 bg-white/[.04] px-4 text-foreground hover:bg-white/[.08]" onClick={surpriseMe} disabled={isSurprising}>
-          {isSurprising ? <LoaderCircle className="animate-spin" data-icon="inline-start" /> : <Shuffle data-icon="inline-start" />} {isSurprising ? 'Finding one…' : 'Surprise me'}
-        </Button>
       </header>
 
-      <section id="top" className="relative mx-auto grid max-w-[1440px] gap-10 px-5 pb-16 pt-8 sm:px-8 lg:grid-cols-[minmax(0,1fr)_minmax(420px,.92fr)] lg:px-12 lg:pb-24 lg:pt-14">
+      <section id="top" className="relative mx-auto grid max-w-[1440px] gap-7 px-4 pb-12 pt-5 sm:gap-10 sm:px-8 sm:pb-16 sm:pt-8 lg:grid-cols-[minmax(0,1fr)_minmax(420px,.92fr)] lg:px-12 lg:pb-24 lg:pt-14">
         <div className="relative z-10 flex max-w-2xl flex-col justify-center">
-          <h1 className="max-w-xl text-balance text-5xl font-semibold leading-[.96] tracking-[-0.065em] sm:text-6xl lg:text-7xl">
+          <h1 className="max-w-xl text-balance text-[2.55rem] font-semibold leading-[.96] tracking-[-0.065em] sm:text-6xl lg:text-7xl">
             Less scrolling.<br /><span className="text-primary">More watching.</span>
           </h1>
-          <p className="mt-6 max-w-lg text-pretty text-base leading-7 text-muted-foreground sm:text-lg">
+          <p className="mt-4 max-w-lg text-pretty text-sm leading-6 text-muted-foreground sm:mt-6 sm:text-lg sm:leading-7">
             AI powered Movie recommender
           </p>
-          <div className="mt-9 rounded-[24px] border border-white/10 bg-white/[.045] p-4 shadow-2xl shadow-black/20 backdrop-blur-xl sm:p-5">
+          <Button variant="outline" className="mt-5 h-10 self-start rounded-full border-white/10 bg-white/[.04] px-4 text-foreground hover:bg-white/[.08]" onClick={surpriseMe} disabled={isSurprising}>
+            {isSurprising ? <LoaderCircle className="animate-spin" data-icon="inline-start" /> : <Shuffle data-icon="inline-start" />} {isSurprising ? 'Finding one…' : 'Surprise me'}
+          </Button>
+          <div className="mt-5 rounded-[20px] border border-white/10 bg-white/[.045] p-3.5 shadow-2xl shadow-black/20 backdrop-blur-xl sm:rounded-[24px] sm:p-5">
             <div className="flex items-center justify-between gap-4"><p className="text-sm font-medium">What are you in the mood for?</p><span className="text-xs text-muted-foreground">Pick one</span></div>
             <fieldset className="mt-3 flex flex-wrap gap-2" aria-label="Choose a mood">
               {moods.map((item) => (
-                <button key={item} className={`rounded-full border px-3.5 py-2 text-sm transition-all ${mood === item ? 'border-primary bg-primary text-primary-foreground shadow-[0_8px_22px_rgba(229,9,20,.2)]' : 'border-white/10 bg-black/10 text-muted-foreground hover:border-white/20 hover:text-foreground'}`} onClick={() => { setMood(item); setQuery(''); }} aria-pressed={mood === item}>
+                <button key={item} className={`rounded-full border px-3 py-1.5 text-xs transition-all sm:px-3.5 sm:py-2 sm:text-sm ${mood === item ? 'border-primary bg-primary text-primary-foreground shadow-[0_8px_22px_rgba(229,9,20,.2)]' : 'border-white/10 bg-black/10 text-muted-foreground hover:border-white/20 hover:text-foreground'}`} onClick={() => chooseMood(item)} aria-pressed={mood === item}>
                   {mood === item && <Check className="mr-1.5 inline size-3.5" />}{item}
                 </button>
               ))}
@@ -488,16 +537,16 @@ export default function Home() {
           </div>
         </div>
 
-        <div className="relative min-h-[540px] lg:min-h-[620px]">
-          <div className="absolute inset-x-8 bottom-3 top-0 rotate-2 rounded-[34px] border border-white/10 bg-white/[.035]" />
-          <article className="group absolute inset-0 overflow-hidden rounded-[30px] border border-white/10 bg-card shadow-[0_40px_100px_rgba(0,0,0,.42)]">
+        <div className="relative min-h-[430px] sm:min-h-[540px] lg:min-h-[620px]">
+          <div className="absolute inset-x-5 bottom-3 top-0 rotate-2 rounded-[26px] border border-white/10 bg-white/[.035] sm:inset-x-8 sm:rounded-[34px]" />
+          <article key={featured.id} aria-live="polite" className="featured-card group absolute inset-0 overflow-hidden rounded-[22px] border border-white/10 bg-card shadow-[0_40px_100px_rgba(0,0,0,.42)] sm:rounded-[30px]">
             <img src={featured.backdrop || featured.poster} alt={`${featured.title} artwork`} className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-[1.025]" />
             <div className="absolute inset-0 bg-gradient-to-t from-[#090a0d] via-[#090a0d]/38 to-transparent" />
-            <div className="absolute inset-x-0 bottom-0 p-6 sm:p-8">
+            <div className="absolute inset-x-0 bottom-0 p-5 sm:p-8">
               <div className="mb-3 flex flex-wrap items-center gap-2"><Badge className="bg-primary text-primary-foreground">#1 match</Badge><Badge variant="outline" className="border-white/20 bg-black/30 text-white backdrop-blur">Because you chose {mood.toLowerCase()}</Badge></div>
-              <h2 className="text-3xl font-semibold tracking-[-0.04em] text-white sm:text-4xl">{featured.title}</h2>
+              <h2 className="text-2xl font-semibold tracking-[-0.04em] text-white sm:text-4xl">{featured.title}</h2>
               <div className="mt-2 flex items-center gap-3 text-sm text-white/70"><span>{featured.year}</span><span>•</span>{featured.runtime && <><span>{featured.runtime}</span><span>•</span></>}<span className="flex items-center gap-1 text-amber-300"><Star className="size-3.5 fill-current" /> {featured.rating}</span></div>
-              <p className="mt-4 max-w-xl line-clamp-3 text-sm leading-6 text-white/70">{featured.description}</p>
+              <p className="mt-3 max-w-xl line-clamp-2 text-xs leading-5 text-white/70 sm:mt-4 sm:line-clamp-3 sm:text-sm sm:leading-6">{featured.description}</p>
               <div className="mt-5 flex gap-2">
                 <Button className="h-10 rounded-full px-5" onClick={() => openMovie(featured)}><Play className="fill-current" /> View details</Button>
                 <Button variant="outline" className="h-10 rounded-full border-white/20 bg-black/20 px-4 text-white hover:bg-white/10" onClick={() => toggleSaved(featured.id)}>{saved.includes(featured.id) ? <Check /> : <Bookmark />} {saved.includes(featured.id) ? 'Saved' : 'My list'}</Button>
@@ -508,8 +557,8 @@ export default function Home() {
       </section>
 
       <section id="recommendations" aria-label="Movie recommendations" className="relative border-t border-white/[.07] bg-[#101010] py-9">
-        <div className="mx-auto max-w-[1440px] space-y-9">
-          <div className="px-5 sm:px-8 lg:px-12">
+        <div className="mx-auto max-w-[1440px] space-y-8 sm:space-y-9">
+          <div className="px-4 sm:px-8 lg:px-12">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <Button
                 variant="outline"
@@ -555,14 +604,14 @@ export default function Home() {
             )}
           </div>
           {isLoading ? (
-            <div className="space-y-3 px-5 sm:px-8 lg:px-12"><Skeleton className="h-5 w-40" /><div className="flex gap-2 overflow-hidden">{[0, 1, 2, 3, 4].map((item) => <Skeleton key={item} className="aspect-video min-w-[230px]" />)}</div></div>
+            <div className="space-y-3 px-4 sm:px-8 lg:px-12"><Skeleton className="h-5 w-40" /><div className="flex gap-2 overflow-hidden">{[0, 1, 2, 3, 4].map((item) => <Skeleton key={item} className="h-[200px] min-w-[78vw] max-w-[300px] sm:min-w-[280px]" />)}</div></div>
           ) : shelves.map((shelf) => (
             <div key={shelf.title}>
-              <h2 className="mb-3 px-5 text-base font-bold tracking-[-0.025em] text-white sm:px-8 lg:px-12">{shelf.title}</h2>
-              <div className="shelf-scroll flex gap-1.5 overflow-x-auto px-5 pb-2 sm:px-8 lg:px-12">
+              <h2 className="mb-3 px-4 text-base font-bold tracking-[-0.025em] text-white sm:px-8 lg:px-12">{shelf.title}</h2>
+              <div className={isFilteredView ? 'grid grid-cols-1 gap-2 px-4 sm:grid-cols-2 sm:px-8 lg:grid-cols-3 lg:px-12 xl:grid-cols-4' : 'shelf-scroll flex gap-1.5 overflow-x-auto px-4 pb-2 sm:px-8 lg:px-12'}>
                 {shelf.items.length === 0 && <p className="py-8 text-sm text-white/55">No movies found. Try another title.</p>}
                 {shelf.items.map((movie) => (
-                  <button key={`${shelf.title}-${movie.id}`} className="movie-card group relative h-[200px] w-[48vw] max-w-[320px] min-w-[230px] shrink-0 overflow-hidden rounded-sm bg-card text-left sm:min-w-[280px]" onClick={() => openMovie(movie)} aria-label={`View details for ${movie.title}`}>
+                  <button key={`${shelf.title}-${movie.id}`} className={`movie-card group relative h-[200px] overflow-hidden rounded-sm bg-card text-left ${isFilteredView ? 'w-full' : 'w-[78vw] max-w-[320px] min-w-[78vw] shrink-0 sm:w-[280px] sm:min-w-[280px]'}`} onClick={() => openMovie(movie)} aria-label={`View details for ${movie.title}`}>
                     <img src={movie.backdrop || movie.poster} alt="" className="h-full w-full object-cover transition duration-300 group-hover:scale-110" loading="lazy" />
                     <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/90 via-black/10 to-transparent" />
                     <h3 className="pointer-events-none absolute inset-x-3 bottom-2.5 line-clamp-2 text-sm font-black leading-tight tracking-[-0.035em] text-white drop-shadow-lg sm:text-base">{movie.title}</h3>
@@ -593,22 +642,22 @@ export default function Home() {
           <dialog
             open
             aria-labelledby="movie-detail-title"
-            className="scrollbar-hidden fixed left-1/2 top-1/2 z-[60] m-0 max-h-[90vh] w-[min(768px,calc(100%-32px))] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-xl border border-white/10 bg-[#181818] p-0 text-white shadow-2xl"
+            className="scrollbar-hidden fixed left-1/2 top-1/2 z-[60] m-0 max-h-[calc(100dvh-16px)] w-[calc(100%-16px)] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-lg border border-white/10 bg-[#181818] p-0 text-white shadow-2xl sm:max-h-[90vh] sm:w-[min(768px,calc(100%-32px))] sm:rounded-xl"
             onCancel={(event) => { event.preventDefault(); setSelectedMovie(null); setDetails(null); }}
           >
             <button className="absolute right-3 top-3 z-10 grid size-9 place-items-center rounded-full bg-black/65 text-white transition hover:bg-black" onClick={() => { setSelectedMovie(null); setDetails(null); }} aria-label="Close movie details"><X className="size-5" /></button>
-              <div className="relative aspect-[16/8] min-h-[260px] overflow-hidden rounded-t-xl">
+              <div className="relative aspect-[16/9] min-h-[220px] overflow-hidden rounded-t-lg sm:aspect-[16/8] sm:min-h-[260px] sm:rounded-t-xl">
                 <img src={activeMovie.backdrop || activeMovie.poster} alt={`${activeMovie.title} backdrop`} className="h-full w-full object-cover" />
                 <div className="absolute inset-0 bg-gradient-to-t from-[#181818] via-transparent to-black/20" />
-                <div className="absolute inset-x-0 bottom-0 p-6">
-                  <h2 id="movie-detail-title" className="text-3xl font-black text-white sm:text-4xl">{activeMovie.title}</h2>
+                <div className="absolute inset-x-0 bottom-0 p-4 sm:p-6">
+                  <h2 id="movie-detail-title" className="text-2xl font-black text-white sm:text-4xl">{activeMovie.title}</h2>
                   <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-white/70">
                     <span>{activeMovie.year}</span><span>•</span><span className="flex items-center gap-1 text-amber-300"><Star className="size-3.5 fill-current" /> {activeMovie.rating}</span>
                     {'runtime' in activeMovie && typeof activeMovie.runtime === 'number' && activeMovie.runtime > 0 && <><span>•</span><span>{formatRuntime(activeMovie.runtime)}</span></>}
                   </div>
                 </div>
               </div>
-              <div className="space-y-6 p-6">
+              <div className="space-y-5 p-4 sm:space-y-6 sm:p-6">
                 {detailsLoading && <div className="flex items-center gap-2 text-sm text-white/60"><LoaderCircle className="size-4 animate-spin" /> Loading cast, trailer, and streaming options…</div>}
                 {'tagline' in activeMovie && activeMovie.tagline && <p className="text-sm italic text-white/55">“{activeMovie.tagline}”</p>}
                 <p className="text-sm leading-6 text-white/75">{activeMovie.description || 'No synopsis is available yet.'}</p>

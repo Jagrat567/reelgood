@@ -1,5 +1,6 @@
 import { sites } from '@openai/sites-vite-plugin';
 import tailwindcss from '@tailwindcss/postcss';
+import { fileURLToPath } from 'node:url';
 import vinext from 'vinext';
 import { defineConfig } from 'vite';
 import hostingConfig from './.openai/hosting.json';
@@ -11,6 +12,29 @@ const { d1, r2 } = hostingConfig;
 
 // macOS Seatbelt blocks FSEvents, so Codex previews need polling for HMR.
 const isCodexSeatbeltSandbox = process.env.CODEX_SANDBOX === 'seatbelt';
+const isVercelBuild =
+  process.env.VERCEL === '1' || process.env.NITRO_PRESET === 'vercel';
+
+const cssPackageAliases = [
+  {
+    find: /^tailwindcss$/,
+    replacement: fileURLToPath(
+      new URL('./node_modules/tailwindcss/index.css', import.meta.url),
+    ),
+  },
+  {
+    find: /^tw-animate-css$/,
+    replacement: fileURLToPath(
+      new URL('./node_modules/tw-animate-css/dist/tw-animate.css', import.meta.url),
+    ),
+  },
+  {
+    find: /^shadcn\/tailwind\.css$/,
+    replacement: fileURLToPath(
+      new URL('./node_modules/shadcn/dist/tailwind.css', import.meta.url),
+    ),
+  },
+];
 
 const localBindingConfig = {
   main: 'vinext/server/fetch-handler',
@@ -35,6 +59,23 @@ const localBindingConfig = {
 };
 
 export default defineConfig(async () => {
+  const commonConfig = {
+    css: { postcss: { plugins: [tailwindcss()] } },
+    resolve: { alias: cssPackageAliases },
+    server: isCodexSeatbeltSandbox
+      ? { watch: { useFsEvents: false, usePolling: true } }
+      : undefined,
+  };
+
+  if (isVercelBuild) {
+    const { nitro } = await import('nitro/vite');
+
+    return {
+      ...commonConfig,
+      plugins: [vinext(), nitro()],
+    };
+  }
+
   // Keep Wrangler and Miniflare state project-local. These are non-secret tool
   // settings; application environment belongs in ignored `.env*` files.
   process.env.WRANGLER_WRITE_LOGS ??= 'false';
@@ -45,10 +86,7 @@ export default defineConfig(async () => {
   const { cloudflare } = await import('@cloudflare/vite-plugin');
 
   return {
-    css: { postcss: { plugins: [tailwindcss()] } },
-    server: isCodexSeatbeltSandbox
-      ? { watch: { useFsEvents: false, usePolling: true } }
-      : undefined,
+    ...commonConfig,
     plugins: [
       vinext(),
       sites(),

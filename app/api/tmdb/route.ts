@@ -30,6 +30,11 @@ const moodGenres: Record<string, number[]> = {
   Thoughtful: [18, 878, 36],
   Emotional: [18, 10749],
   Surreal: [14, 9648, 878],
+  Relaxed: [35, 10751, 16],
+  Romantic: [10749, 18],
+  Adventurous: [12, 28, 14],
+  Mysterious: [9648, 53, 878],
+  Inspiring: [18, 36, 99],
 };
 
 type TmdbMovie = {
