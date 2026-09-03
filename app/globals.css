@@ -7,9 +7,9 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-  --font-heading: var(--font-geist-sans);
+  --font-sans: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --font-mono: "Courier New", monospace;
+  --font-heading: "Arial Black", "Helvetica Neue", Arial, sans-serif;
   --color-ring: var(--ring);
   --color-input: var(--input);
   --color-border: var(--border);
@@ -60,7 +60,22 @@
 @layer base {
   * { @apply border-border outline-ring/50; }
   html { @apply scroll-smooth font-sans; background: var(--background); }
-  body { @apply bg-background text-foreground; min-width: 320px; }
+  body {
+    @apply bg-background text-foreground;
+    min-width: 320px;
+    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    font-weight: 400;
+    letter-spacing: -0.012em;
+  }
+  h1, h2, h3 {
+    font-family: "Arial Black", "Helvetica Neue", Arial, sans-serif;
+    font-weight: 900;
+    letter-spacing: -0.055em;
+  }
+  button, input, nav, .netflix-type {
+    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    letter-spacing: -0.018em;
+  }
   button, a { -webkit-tap-highlight-color: transparent; }
   ::selection { background: color-mix(in oklab, var(--primary) 45%, transparent); }
 }
