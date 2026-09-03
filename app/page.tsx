@@ -14,7 +14,6 @@ import {
   Search,
   Shuffle,
   SlidersHorizontal,
-  Sparkles,
   Star,
   X,
 } from 'lucide-react';
@@ -461,14 +460,11 @@ export default function Home() {
 
       <section id="top" className="relative mx-auto grid max-w-[1440px] gap-10 px-5 pb-16 pt-8 sm:px-8 lg:grid-cols-[minmax(0,1fr)_minmax(420px,.92fr)] lg:px-12 lg:pb-24 lg:pt-14">
         <div className="relative z-10 flex max-w-2xl flex-col justify-center">
-          <Badge className="mb-6 h-7 rounded-full border border-primary/20 bg-primary/10 px-3 text-primary" variant="outline">
-            <Sparkles className="size-3.5" /> {isLive ? 'Live picks powered by TMDb' : 'Curated preview catalog'}
-          </Badge>
           <h1 className="max-w-xl text-balance text-5xl font-semibold leading-[.96] tracking-[-0.065em] sm:text-6xl lg:text-7xl">
             Less scrolling.<br /><span className="text-primary">More watching.</span>
           </h1>
           <p className="mt-6 max-w-lg text-pretty text-base leading-7 text-muted-foreground sm:text-lg">
-            Tell us the vibe. We’ll find films that feel right—and explain why each one belongs on your screen tonight.
+            AI powered Movie recommender
           </p>
           <div className="mt-9 rounded-[24px] border border-white/10 bg-white/[.045] p-4 shadow-2xl shadow-black/20 backdrop-blur-xl sm:p-5">
             <div className="flex items-center justify-between gap-4"><p className="text-sm font-medium">What are you in the mood for?</p><span className="text-xs text-muted-foreground">Pick one</span></div>
@@ -489,10 +485,6 @@ export default function Home() {
               </Button>
             </form>
             {searchError && <output className="mt-2 block text-xs text-amber-300">{searchError}</output>}
-          </div>
-          <div className="mt-6 flex items-center gap-5 text-xs text-muted-foreground">
-            <span className="flex items-center gap-1.5"><Film className="size-3.5 text-primary" /> {isLive ? 'Live movie catalog' : `${fallbackMovies.length} preview films`}</span>
-            <span className="flex items-center gap-1.5"><Bookmark className="size-3.5 text-primary" /> Saves on this device</span>
           </div>
         </div>
 
