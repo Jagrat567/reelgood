@@ -13,6 +13,7 @@ import {
   Play,
   Search,
   Shuffle,
+  SlidersHorizontal,
   Sparkles,
   Star,
   X,
@@ -29,6 +30,7 @@ type Movie = {
   year: number;
   runtime: string;
   rating: number;
+  language?: string;
   genres: string[];
   moods: string[];
   description: string;
@@ -150,7 +152,7 @@ const fallbackMovies: Movie[] = [
 ];
 
 const moods = ['Cozy', 'Fun', 'Intense', 'Thoughtful', 'Emotional', 'Surreal'];
-const genres = ['All', 'Drama', 'Sci-fi', 'Comedy', 'Adventure', 'Animation', 'Fantasy'];
+const genres = ['All', 'Action', 'Adventure', 'Animation', 'Comedy', 'Crime', 'Drama', 'Family', 'Fantasy', 'Mystery', 'Romance', 'Sci-fi', 'Thriller'];
 const fallbackTrending = [...fallbackMovies].sort((a, b) => b.rating - a.rating);
 const watchlistStorageKey = 'reelgood-watchlist:v1';
 
@@ -188,6 +190,9 @@ export default function Home() {
   const [isSearching, setIsSearching] = useState(false);
   const [searchError, setSearchError] = useState('');
   const [isSurprising, setIsSurprising] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [languageFilter, setLanguageFilter] = useState('All');
+  const [minimumRating, setMinimumRating] = useState(7);
   const [selectedMovie, setSelectedMovie] = useState<Movie | null>(null);
   const [details, setDetails] = useState<MovieDetails | null>(null);
   const [detailsLoading, setDetailsLoading] = useState(false);
@@ -285,24 +290,33 @@ export default function Home() {
       });
   }, [genre, mood, query]);
 
-  const topPicks = query.trim().length >= 2
+  const unfilteredTopPicks = query.trim().length >= 2
     ? searchResults ?? fallbackRanked
     : moodResults ?? homeShelves?.topPicks ?? fallbackRanked;
-  const trending = homeShelves?.trending ?? fallbackTrending;
+  const filterMovies = (items: Movie[]) => items.filter((movie) => {
+    const languageMatch = languageFilter === 'All'
+      || (languageFilter === 'Bollywood' && movie.language === 'hi')
+      || (languageFilter === 'Hollywood' && (movie.language ?? 'en') === 'en');
+    const genreMatch = genre === 'All' || movie.genres.includes(genre);
+    return languageMatch && genreMatch && movie.rating >= minimumRating;
+  });
+  const topPicks = filterMovies(unfilteredTopPicks);
+  const trending = filterMovies(homeShelves?.trending ?? fallbackTrending);
   const featured = topPicks[0] ?? trending[0] ?? fallbackMovies[0];
+  const activeFilterCount = Number(languageFilter !== 'All') + Number(genre !== 'All') + Number(minimumRating > 7);
   const shelves = query.trim().length >= 2
     ? [{ title: `Search results for “${query.trim()}”`, items: topPicks }]
     : [
         { title: `Top picks for a ${mood.toLowerCase()} mood`, items: topPicks },
         { title: 'Trending now', items: trending },
         ...(homeShelves ? [
-          { title: 'Popular tonight', items: homeShelves.popular },
-          { title: 'Now playing in cinemas', items: homeShelves.nowPlaying },
-          { title: 'Fresh releases', items: homeShelves.newReleases },
-          { title: 'Adrenaline rush', items: homeShelves.actionHits },
-          { title: 'Comedy favorites', items: homeShelves.comedyFavorites },
-          { title: 'Sci-fi worlds', items: homeShelves.scifiWorlds },
-          { title: 'Hidden gems', items: homeShelves.hiddenGems },
+          { title: 'Popular tonight', items: filterMovies(homeShelves.popular) },
+          { title: 'Now playing in cinemas', items: filterMovies(homeShelves.nowPlaying) },
+          { title: 'Fresh releases', items: filterMovies(homeShelves.newReleases) },
+          { title: 'Adrenaline rush', items: filterMovies(homeShelves.actionHits) },
+          { title: 'Comedy favorites', items: filterMovies(homeShelves.comedyFavorites) },
+          { title: 'Sci-fi worlds', items: filterMovies(homeShelves.scifiWorlds) },
+          { title: 'Hidden gems', items: filterMovies(homeShelves.hiddenGems) },
         ] : []),
       ];
 
@@ -503,6 +517,51 @@ export default function Home() {
 
       <section id="recommendations" aria-label="Movie recommendations" className="relative border-t border-white/[.07] bg-[#101010] py-9">
         <div className="mx-auto max-w-[1440px] space-y-9">
+          <div className="px-5 sm:px-8 lg:px-12">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <Button
+                variant="outline"
+                className="h-10 rounded-full border-white/15 bg-white/[.04] px-4 text-white hover:bg-white/10"
+                onClick={() => setFiltersOpen((current) => !current)}
+                aria-expanded={filtersOpen}
+                aria-controls="movie-filters"
+              >
+                <SlidersHorizontal className="size-4" /> Filters
+                {activeFilterCount > 0 && <Badge className="ml-1 min-w-5 justify-center bg-primary px-1.5 text-white">{activeFilterCount}</Badge>}
+              </Button>
+              <p className="text-xs text-white/45">Bollywood + Hollywood · Rated 7.0 and above</p>
+            </div>
+            {filtersOpen && (
+              <div id="movie-filters" className="mt-4 grid gap-4 rounded-xl border border-white/10 bg-white/[.035] p-4 sm:grid-cols-3 lg:max-w-3xl">
+                <label className="space-y-1.5 text-xs font-semibold text-white/65">
+                  <span>Movie industry</span>
+                  <select value={languageFilter} onChange={(event) => setLanguageFilter(event.target.value)} className="h-10 w-full rounded-lg border border-white/10 bg-[#181818] px-3 text-sm text-white outline-none focus:border-primary">
+                    <option value="All">Bollywood + Hollywood</option>
+                    <option value="Bollywood">Bollywood only</option>
+                    <option value="Hollywood">Hollywood only</option>
+                  </select>
+                </label>
+                <label className="space-y-1.5 text-xs font-semibold text-white/65">
+                  <span>Genre</span>
+                  <select value={genre} onChange={(event) => setGenre(event.target.value)} className="h-10 w-full rounded-lg border border-white/10 bg-[#181818] px-3 text-sm text-white outline-none focus:border-primary">
+                    {genres.map((item) => <option key={item} value={item}>{item === 'All' ? 'All genres' : item}</option>)}
+                  </select>
+                </label>
+                <label className="space-y-1.5 text-xs font-semibold text-white/65">
+                  <span>Minimum rating</span>
+                  <select value={minimumRating} onChange={(event) => setMinimumRating(Number(event.target.value))} className="h-10 w-full rounded-lg border border-white/10 bg-[#181818] px-3 text-sm text-white outline-none focus:border-primary">
+                    <option value={7}>7.0+</option>
+                    <option value={7.5}>7.5+</option>
+                    <option value={8}>8.0+</option>
+                    <option value={8.5}>8.5+</option>
+                  </select>
+                </label>
+                <Button variant="ghost" className="h-9 justify-self-start px-2 text-xs text-primary sm:col-span-3" onClick={() => { setLanguageFilter('All'); setGenre('All'); setMinimumRating(7); }}>
+                  Clear filters
+                </Button>
+              </div>
+            )}
+          </div>
           {isLoading ? (
             <div className="space-y-3 px-5 sm:px-8 lg:px-12"><Skeleton className="h-5 w-40" /><div className="flex gap-2 overflow-hidden">{[0, 1, 2, 3, 4].map((item) => <Skeleton key={item} className="aspect-video min-w-[230px]" />)}</div></div>
           ) : shelves.map((shelf) => (

@@ -43,6 +43,7 @@ type TmdbMovie = {
   first_air_date?: string;
   vote_average?: number;
   genre_ids?: number[];
+  original_language?: string;
 };
 
 type TmdbList = { results: TmdbMovie[] };
@@ -88,6 +89,7 @@ function mapMovie(movie: TmdbMovie) {
     year: Number(releaseDate.slice(0, 4)) || 0,
     runtime: '',
     rating: Number((movie.vote_average ?? 0).toFixed(1)),
+    language: movie.original_language ?? '',
     genres: (movie.genre_ids ?? []).map((id) => genreNames[id]).filter(Boolean),
     moods: [],
     description: movie.overview ?? '',
@@ -105,6 +107,26 @@ function mapMovies(list: TmdbMovie[]) {
         (movie.vote_average ?? 0) >= 7,
     )
     .map(mapMovie);
+}
+
+function mixMovieLists(hollywood: TmdbMovie[], bollywood: TmdbMovie[], seed: string, offset: number) {
+  const english = mapMovies(shuffleWithSeed(hollywood, seed, offset));
+  const hindi = mapMovies(shuffleWithSeed(bollywood, seed, offset + 1));
+  const first = numberFromSeed(seed, offset + 2, 2) === 1 ? english : hindi;
+  const second = first === english ? hindi : english;
+  const mixed: ReturnType<typeof mapMovie>[] = [];
+  const seen = new Set<number>();
+  const add = (movie: ReturnType<typeof mapMovie> | undefined) => {
+    if (movie && !seen.has(movie.id)) {
+      seen.add(movie.id);
+      mixed.push(movie);
+    }
+  };
+  for (let index = 0; index < Math.max(first.length, second.length) && mixed.length < 20; index += 1) {
+    add(first[index]);
+    add(second[index]);
+  }
+  return mixed;
 }
 
 async function tmdb<T>(path: string, params: Record<string, string> = {}): Promise<T> {
@@ -128,52 +150,104 @@ export async function GET(request: NextRequest) {
   try {
     if (view === 'home') {
       const currentDate = new Date().toISOString().slice(0, 10);
-      const [trendingDay, trendingWeek, popular, nowPlaying, acclaimed, newReleases, actionHits, comedyFavorites, scifiWorlds, hiddenGems] = await Promise.all([
-        tmdb<TmdbList>('/trending/movie/day', { language: 'en-US' }),
+      const recentStart = `${Math.max(new Date().getUTCFullYear() - 1, 2024)}-01-01`;
+      const [
+        trendingHollywood, trendingBollywood,
+        popularHollywood, popularBollywood,
+        nowPlayingHollywood, nowPlayingBollywood,
+        acclaimedHollywood, acclaimedBollywood,
+        newHollywood, newBollywood,
+        actionHollywood, actionBollywood,
+        comedyHollywood, comedyBollywood,
+        scifiHollywood, scifiBollywood,
+        hiddenHollywood, hiddenBollywood,
+      ] = await Promise.all([
         tmdb<TmdbList>('/trending/movie/week', { language: 'en-US' }),
-        tmdb<TmdbList>('/movie/popular', { language: 'en-US', region: 'IN', page: String(numberFromSeed(seed, 1, 12)) }),
-        tmdb<TmdbList>('/movie/now_playing', { language: 'en-US', region: 'IN', page: String(numberFromSeed(seed, 2, 3)) }),
         tmdb<TmdbList>('/discover/movie', {
-          language: 'en-US',
-          include_adult: 'false',
-          sort_by: 'vote_average.desc',
-          'vote_count.gte': '1500',
-          page: String(numberFromSeed(seed, 3, 10)),
+          language: 'en-US', include_adult: 'false', sort_by: 'popularity.desc', with_original_language: 'hi',
+          'vote_average.gte': '7', 'vote_count.gte': '50', page: String(numberFromSeed(seed, 1, 8)),
         }),
         tmdb<TmdbList>('/discover/movie', {
-          language: 'en-US', include_adult: 'false', sort_by: 'primary_release_date.desc',
+          language: 'en-US', include_adult: 'false', sort_by: 'popularity.desc', with_original_language: 'en',
+          'vote_average.gte': '7', 'vote_count.gte': '300', page: String(numberFromSeed(seed, 2, 14)),
+        }),
+        tmdb<TmdbList>('/discover/movie', {
+          language: 'en-US', include_adult: 'false', sort_by: 'popularity.desc', with_original_language: 'hi',
+          'vote_average.gte': '7', 'vote_count.gte': '50', page: String(numberFromSeed(seed, 3, 8)),
+        }),
+        tmdb<TmdbList>('/discover/movie', {
+          language: 'en-US', include_adult: 'false', sort_by: 'primary_release_date.desc', with_original_language: 'en',
+          'primary_release_date.gte': recentStart, 'primary_release_date.lte': currentDate,
+          'vote_average.gte': '7', 'vote_count.gte': '75', page: String(numberFromSeed(seed, 4, 8)),
+        }),
+        tmdb<TmdbList>('/discover/movie', {
+          language: 'en-US', include_adult: 'false', sort_by: 'primary_release_date.desc', with_original_language: 'hi',
+          'primary_release_date.gte': recentStart, 'primary_release_date.lte': currentDate,
+          'vote_average.gte': '7', 'vote_count.gte': '20', page: String(numberFromSeed(seed, 5, 5)),
+        }),
+        tmdb<TmdbList>('/discover/movie', {
+          language: 'en-US', include_adult: 'false', sort_by: 'vote_average.desc', with_original_language: 'en',
+          'vote_average.gte': '7', 'vote_count.gte': '1500', page: String(numberFromSeed(seed, 6, 10)),
+        }),
+        tmdb<TmdbList>('/discover/movie', {
+          language: 'en-US', include_adult: 'false', sort_by: 'vote_average.desc', with_original_language: 'hi',
+          'vote_average.gte': '7', 'vote_count.gte': '100', page: String(numberFromSeed(seed, 7, 6)),
+        }),
+        tmdb<TmdbList>('/discover/movie', {
+          language: 'en-US', include_adult: 'false', sort_by: 'primary_release_date.desc', with_original_language: 'en',
           'primary_release_date.gte': '2024-01-01', 'primary_release_date.lte': currentDate,
-          'vote_count.gte': '100', page: String(numberFromSeed(seed, 4, 12)),
+          'vote_average.gte': '7', 'vote_count.gte': '100', page: String(numberFromSeed(seed, 8, 10)),
         }),
         tmdb<TmdbList>('/discover/movie', {
-          language: 'en-US', include_adult: 'false', sort_by: 'popularity.desc', with_genres: '28',
-          'vote_count.gte': '300', page: String(numberFromSeed(seed, 5, 18)),
+          language: 'en-US', include_adult: 'false', sort_by: 'primary_release_date.desc', with_original_language: 'hi',
+          'primary_release_date.gte': '2024-01-01', 'primary_release_date.lte': currentDate,
+          'vote_average.gte': '7', 'vote_count.gte': '20', page: String(numberFromSeed(seed, 9, 6)),
         }),
         tmdb<TmdbList>('/discover/movie', {
-          language: 'en-US', include_adult: 'false', sort_by: 'popularity.desc', with_genres: '35',
-          'vote_count.gte': '250', page: String(numberFromSeed(seed, 6, 18)),
+          language: 'en-US', include_adult: 'false', sort_by: 'popularity.desc', with_original_language: 'en', with_genres: '28',
+          'vote_average.gte': '7', 'vote_count.gte': '300', page: String(numberFromSeed(seed, 10, 16)),
         }),
         tmdb<TmdbList>('/discover/movie', {
-          language: 'en-US', include_adult: 'false', sort_by: 'popularity.desc', with_genres: '878',
-          'vote_count.gte': '250', page: String(numberFromSeed(seed, 7, 16)),
+          language: 'en-US', include_adult: 'false', sort_by: 'popularity.desc', with_original_language: 'hi', with_genres: '28',
+          'vote_average.gte': '7', 'vote_count.gte': '30', page: String(numberFromSeed(seed, 11, 6)),
         }),
         tmdb<TmdbList>('/discover/movie', {
-          language: 'en-US', include_adult: 'false', sort_by: 'vote_average.desc',
-          'vote_count.gte': '150', 'vote_count.lte': '1500', page: String(numberFromSeed(seed, 8, 16)),
+          language: 'en-US', include_adult: 'false', sort_by: 'popularity.desc', with_original_language: 'en', with_genres: '35',
+          'vote_average.gte': '7', 'vote_count.gte': '250', page: String(numberFromSeed(seed, 12, 16)),
+        }),
+        tmdb<TmdbList>('/discover/movie', {
+          language: 'en-US', include_adult: 'false', sort_by: 'popularity.desc', with_original_language: 'hi', with_genres: '35',
+          'vote_average.gte': '7', 'vote_count.gte': '30', page: String(numberFromSeed(seed, 13, 6)),
+        }),
+        tmdb<TmdbList>('/discover/movie', {
+          language: 'en-US', include_adult: 'false', sort_by: 'popularity.desc', with_original_language: 'en', with_genres: '878',
+          'vote_average.gte': '7', 'vote_count.gte': '250', page: String(numberFromSeed(seed, 14, 14)),
+        }),
+        tmdb<TmdbList>('/discover/movie', {
+          language: 'en-US', include_adult: 'false', sort_by: 'popularity.desc', with_original_language: 'hi', with_genres: '878',
+          'vote_average.gte': '7', 'vote_count.gte': '5', page: String(numberFromSeed(seed, 15, 2)),
+        }),
+        tmdb<TmdbList>('/discover/movie', {
+          language: 'en-US', include_adult: 'false', sort_by: 'vote_average.desc', with_original_language: 'en',
+          'vote_average.gte': '7', 'vote_count.gte': '150', 'vote_count.lte': '1500', page: String(numberFromSeed(seed, 16, 14)),
+        }),
+        tmdb<TmdbList>('/discover/movie', {
+          language: 'en-US', include_adult: 'false', sort_by: 'vote_average.desc', with_original_language: 'hi',
+          'vote_average.gte': '7', 'vote_count.gte': '20', 'vote_count.lte': '1000', page: String(numberFromSeed(seed, 17, 8)),
         }),
       ]);
 
       return NextResponse.json(
         {
-          trending: mapMovies(shuffleWithSeed([...trendingDay.results, ...trendingWeek.results], seed, 10)).slice(0, 20),
-          popular: mapMovies(shuffleWithSeed(popular.results, seed, 11)),
-          nowPlaying: mapMovies(shuffleWithSeed(nowPlaying.results, seed, 12)),
-          topPicks: mapMovies(shuffleWithSeed(acclaimed.results, seed, 13)),
-          newReleases: mapMovies(shuffleWithSeed(newReleases.results, seed, 14)),
-          actionHits: mapMovies(shuffleWithSeed(actionHits.results, seed, 15)),
-          comedyFavorites: mapMovies(shuffleWithSeed(comedyFavorites.results, seed, 16)),
-          scifiWorlds: mapMovies(shuffleWithSeed(scifiWorlds.results, seed, 17)),
-          hiddenGems: mapMovies(shuffleWithSeed(hiddenGems.results, seed, 18)),
+          trending: mixMovieLists(trendingHollywood.results, trendingBollywood.results, seed, 30),
+          popular: mixMovieLists(popularHollywood.results, popularBollywood.results, seed, 33),
+          nowPlaying: mixMovieLists(nowPlayingHollywood.results, nowPlayingBollywood.results, seed, 36),
+          topPicks: mixMovieLists(acclaimedHollywood.results, acclaimedBollywood.results, seed, 39),
+          newReleases: mixMovieLists(newHollywood.results, newBollywood.results, seed, 42),
+          actionHits: mixMovieLists(actionHollywood.results, actionBollywood.results, seed, 45),
+          comedyFavorites: mixMovieLists(comedyHollywood.results, comedyBollywood.results, seed, 48),
+          scifiWorlds: mixMovieLists(scifiHollywood.results, scifiBollywood.results, seed, 51),
+          hiddenGems: mixMovieLists(hiddenHollywood.results, hiddenBollywood.results, seed, 54),
         },
         { headers: { 'Cache-Control': 'no-store' } },
       );
@@ -193,16 +267,20 @@ export async function GET(request: NextRequest) {
     if (view === 'discover') {
       const mood = request.nextUrl.searchParams.get('mood') ?? 'Thoughtful';
       const genreIds = moodGenres[mood] ?? moodGenres.Thoughtful;
-      const data = await tmdb<TmdbList>('/discover/movie', {
-        language: 'en-US',
-        include_adult: 'false',
-        sort_by: 'popularity.desc',
-        'vote_count.gte': '250',
-        with_genres: genreIds.join('|'),
-        page: String(numberFromSeed(seed, 20, 18)),
-      });
+      const [hollywood, bollywood] = await Promise.all([
+        tmdb<TmdbList>('/discover/movie', {
+          language: 'en-US', include_adult: 'false', sort_by: 'popularity.desc', with_original_language: 'en',
+          'vote_average.gte': '7', 'vote_count.gte': '250', with_genres: genreIds.join('|'),
+          page: String(numberFromSeed(seed, 60, 16)),
+        }),
+        tmdb<TmdbList>('/discover/movie', {
+          language: 'en-US', include_adult: 'false', sort_by: 'popularity.desc', with_original_language: 'hi',
+          'vote_average.gte': '7', 'vote_count.gte': '20', with_genres: genreIds.join('|'),
+          page: String(numberFromSeed(seed, 61, 6)),
+        }),
+      ]);
       return NextResponse.json(
-        { results: mapMovies(shuffleWithSeed(data.results, seed, 21)), mood },
+        { results: mixMovieLists(hollywood.results, bollywood.results, seed, 63), mood },
         { headers: { 'Cache-Control': 'no-store' } },
       );
     }
