@@ -124,6 +124,7 @@ const movies: Movie[] = [
 
 const moods = ['Cozy', 'Fun', 'Intense', 'Thoughtful', 'Emotional', 'Surreal'];
 const genres = ['All', 'Drama', 'Sci-fi', 'Comedy', 'Adventure', 'Animation', 'Fantasy'];
+const trendingMovies = [...movies].sort((a, b) => b.rating - a.rating);
 const watchlistStorageKey = 'reelgood-watchlist:v1';
 
 type ModelContext = {
@@ -362,16 +363,27 @@ export default function Home() {
         </div>
       </section>
 
-      <section id="recommendations" aria-label="Tonight's best matches" className="relative border-t border-white/[.07] bg-black/10 px-5 py-8 sm:px-8 lg:px-12">
-        <div className="mx-auto grid max-w-[1440px] grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4 xl:gap-5">
-          {ranked.map((movie) => (
-            <div key={movie.id} className="movie-card group relative aspect-[4/3] overflow-hidden rounded-lg bg-card">
-              <img
-                src={movie.poster}
-                alt={`${movie.title} poster`}
-                className="h-full w-full object-cover object-[center_28%] transition duration-500 group-hover:scale-105"
-                loading="lazy"
-              />
+      <section id="recommendations" aria-label="Tonight's best matches" className="relative border-t border-white/[.07] bg-[#101010] py-9">
+        <div className="mx-auto max-w-[1440px] space-y-9">
+          {[
+            { title: 'Top picks for you', items: ranked.length ? ranked : movies },
+            { title: 'Trending now', items: trendingMovies },
+          ].map((shelf) => (
+            <div key={shelf.title}>
+              <h2 className="mb-3 px-5 text-base font-bold tracking-[-0.025em] text-white sm:px-8 lg:px-12">{shelf.title}</h2>
+              <div className="shelf-scroll flex gap-1.5 overflow-x-auto px-5 pb-2 sm:px-8 lg:px-12">
+                {shelf.items.map((movie) => (
+                  <div key={`${shelf.title}-${movie.id}`} className="movie-card group relative aspect-video w-[42vw] max-w-[235px] min-w-[170px] shrink-0 overflow-hidden rounded-sm bg-card sm:min-w-[205px]">
+                    <img
+                      src={movie.poster}
+                      alt={`${movie.title} poster`}
+                      className="h-full w-full object-cover object-[center_28%] transition duration-300 group-hover:scale-110"
+                      loading="lazy"
+                    />
+                    <div className="pointer-events-none absolute inset-0 ring-1 ring-inset ring-white/5 transition group-hover:ring-white/20" />
+                  </div>
+                ))}
+              </div>
             </div>
           ))}
         </div>
