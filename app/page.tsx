@@ -6,7 +6,6 @@ import {
   Bookmark,
   Check,
   ChevronRight,
-  Clock3,
   Film,
   Heart,
   Play,
@@ -272,7 +271,7 @@ export default function Home() {
         </a>
         <nav className="hidden items-center gap-8 text-sm text-muted-foreground md:flex" aria-label="Main navigation">
           <a className="transition-colors hover:text-foreground" href="#recommendations">Discover</a>
-          <a className="transition-colors hover:text-foreground" href="#genres">Genres</a>
+          <a className="transition-colors hover:text-foreground" href="#recommendations">Movies</a>
           <a className="transition-colors hover:text-foreground" href="#watchlist">My list <span className="ml-1 text-primary">{saved.length}</span></a>
         </nav>
         <Button variant="outline" className="h-10 rounded-full border-white/10 bg-white/[.04] px-4 text-foreground hover:bg-white/[.08]" onClick={surpriseMe}>
@@ -363,61 +362,18 @@ export default function Home() {
         </div>
       </section>
 
-      <section id="recommendations" className="relative border-t border-white/[.07] bg-black/10 px-5 py-16 sm:px-8 lg:px-12 lg:py-20">
-        <div className="mx-auto max-w-[1440px]">
-          <div className="flex flex-col justify-between gap-5 md:flex-row md:items-end">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[.16em] text-primary">Curated for you</p>
-              <h2 className="mt-2 text-3xl font-semibold tracking-[-0.045em] sm:text-4xl">Tonight’s best matches</h2>
-              <p className="mt-2 text-sm text-muted-foreground">Ranked for a {mood.toLowerCase()} mood. Change the filters and the list responds instantly.</p>
+      <section id="recommendations" aria-label="Tonight's best matches" className="relative border-t border-white/[.07] bg-black/10 px-5 py-8 sm:px-8 lg:px-12">
+        <div className="mx-auto grid max-w-[1440px] grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4 xl:gap-5">
+          {ranked.map((movie) => (
+            <div key={movie.id} className="movie-card group relative aspect-[4/3] overflow-hidden rounded-lg bg-card">
+              <img
+                src={movie.poster}
+                alt={`${movie.title} poster`}
+                className="h-full w-full object-cover object-[center_28%] transition duration-500 group-hover:scale-105"
+                loading="lazy"
+              />
             </div>
-            <fieldset id="genres" className="flex max-w-full gap-2 overflow-x-auto pb-1" aria-label="Filter by genre">
-              {genres.map((item) => (
-                <button key={item} className={`shrink-0 rounded-full border px-3.5 py-2 text-sm transition ${genre === item ? 'border-primary/60 bg-primary/10 text-primary' : 'border-white/10 text-muted-foreground hover:text-foreground'}`} onClick={() => setGenre(item)} aria-pressed={genre === item}>
-                  {item}
-                </button>
-              ))}
-            </fieldset>
-          </div>
-
-          {ranked.length ? (
-            <div className="mt-9 grid grid-cols-2 gap-x-3 gap-y-8 sm:grid-cols-3 sm:gap-x-5 lg:grid-cols-4 xl:gap-x-6">
-              {ranked.map((movie, index) => (
-                <article key={movie.id} className="movie-card group min-w-0">
-                  <div className="relative aspect-[2/3] overflow-hidden rounded-[18px] border border-white/10 bg-card">
-                    <img src={movie.poster} alt={`${movie.title} poster`} className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.04]" loading="lazy" />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/10 opacity-80" />
-                    <span className="absolute left-3 top-3 grid size-8 place-items-center rounded-full bg-black/55 text-sm font-semibold text-white backdrop-blur">{index + 1}</span>
-                    <button
-                      className={`absolute right-3 top-3 grid size-9 place-items-center rounded-full border backdrop-blur transition ${saved.includes(movie.id) ? 'border-primary bg-primary text-primary-foreground' : 'border-white/20 bg-black/45 text-white hover:bg-black/70'}`}
-                      onClick={() => toggleSaved(movie.id)}
-                      aria-label={`${saved.includes(movie.id) ? 'Remove' : 'Add'} ${movie.title} ${saved.includes(movie.id) ? 'from' : 'to'} watchlist`}
-                    >
-                      {saved.includes(movie.id) ? <Check className="size-4" /> : <Bookmark className="size-4" />}
-                    </button>
-                    <div className="absolute inset-x-3 bottom-3 flex items-center justify-between text-xs text-white/80">
-                      <span className="rounded-full bg-black/55 px-2.5 py-1 backdrop-blur">{movie.moods.includes(mood) ? `${mood} match` : 'Worth a look'}</span>
-                      <span className="flex items-center gap-1 rounded-full bg-black/55 px-2.5 py-1 backdrop-blur"><Star className="size-3 fill-amber-300 text-amber-300" /> {movie.rating}</span>
-                    </div>
-                  </div>
-                  <div className="px-1 pt-3">
-                    <h3 className="truncate text-base font-semibold tracking-tight">{movie.title}</h3>
-                    <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
-                      <span>{movie.year}</span><span>•</span><Clock3 className="size-3" /><span>{movie.runtime}</span>
-                    </div>
-                    <p className="mt-2 line-clamp-2 text-xs leading-5 text-muted-foreground">{movie.description}</p>
-                  </div>
-                </article>
-              ))}
-            </div>
-          ) : (
-            <div className="mt-10 rounded-3xl border border-dashed border-white/10 px-6 py-16 text-center">
-              <Film className="mx-auto size-8 text-primary" />
-              <h3 className="mt-4 text-lg font-semibold">No exact match—yet</h3>
-              <p className="mt-1 text-sm text-muted-foreground">Try another title or reset the genre to see more films.</p>
-              <Button variant="outline" className="mt-5" onClick={() => { setQuery(''); setGenre('All'); }}>Clear filters</Button>
-            </div>
-          )}
+          ))}
         </div>
       </section>
 
