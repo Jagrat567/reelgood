@@ -15,16 +15,11 @@ import {
   Shuffle,
   Sparkles,
   Star,
+  X,
 } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogTitle,
-} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 
@@ -492,19 +487,25 @@ export default function Home() {
         <p>This product uses the TMDB API but is not endorsed or certified by TMDB.</p>
       </footer>
 
-      <Dialog open={Boolean(selectedMovie)} onOpenChange={(open) => { if (!open) { setSelectedMovie(null); setDetails(null); } }}>
-        <DialogContent className="max-h-[90vh] max-w-3xl gap-0 overflow-y-auto border-white/10 bg-[#181818] p-0 text-white shadow-2xl" showCloseButton>
-          {activeMovie && (
-            <>
+      {activeMovie && (
+        <>
+          <button className="fixed inset-0 z-50 cursor-default bg-black/75 backdrop-blur-sm" onClick={() => { setSelectedMovie(null); setDetails(null); }} aria-label="Close movie details" />
+          <dialog
+            open
+            aria-labelledby="movie-detail-title"
+            className="fixed left-1/2 top-1/2 z-[60] m-0 max-h-[90vh] w-[min(768px,calc(100%-32px))] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-xl border border-white/10 bg-[#181818] p-0 text-white shadow-2xl"
+            onCancel={(event) => { event.preventDefault(); setSelectedMovie(null); setDetails(null); }}
+          >
+            <button className="absolute right-3 top-3 z-10 grid size-9 place-items-center rounded-full bg-black/65 text-white transition hover:bg-black" onClick={() => { setSelectedMovie(null); setDetails(null); }} aria-label="Close movie details"><X className="size-5" /></button>
               <div className="relative aspect-[16/8] min-h-[260px] overflow-hidden rounded-t-xl">
                 <img src={activeMovie.backdrop || activeMovie.poster} alt={`${activeMovie.title} backdrop`} className="h-full w-full object-cover" />
                 <div className="absolute inset-0 bg-gradient-to-t from-[#181818] via-transparent to-black/20" />
                 <div className="absolute inset-x-0 bottom-0 p-6">
-                  <DialogTitle className="text-3xl font-black text-white sm:text-4xl">{activeMovie.title}</DialogTitle>
-                  <DialogDescription className="mt-2 flex flex-wrap items-center gap-2 text-white/70">
+                  <h2 id="movie-detail-title" className="text-3xl font-black text-white sm:text-4xl">{activeMovie.title}</h2>
+                  <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-white/70">
                     <span>{activeMovie.year}</span><span>•</span><span className="flex items-center gap-1 text-amber-300"><Star className="size-3.5 fill-current" /> {activeMovie.rating}</span>
                     {'runtime' in activeMovie && typeof activeMovie.runtime === 'number' && activeMovie.runtime > 0 && <><span>•</span><span>{formatRuntime(activeMovie.runtime)}</span></>}
-                  </DialogDescription>
+                  </div>
                 </div>
               </div>
               <div className="space-y-6 p-6">
@@ -522,10 +523,9 @@ export default function Home() {
                 {'cast' in activeMovie && activeMovie.cast.length > 0 && <div><h3 className="text-sm font-bold">Cast</h3><div className="mt-3 flex gap-3 overflow-x-auto pb-2">{activeMovie.cast.map((person) => <div key={person.id} className="w-20 shrink-0 text-center">{person.photo ? <img src={person.photo} alt={person.name} className="mx-auto size-16 rounded-full object-cover" /> : <div className="mx-auto grid size-16 place-items-center rounded-full bg-white/10"><Film className="size-5" /></div>}<p className="mt-2 truncate text-xs font-semibold">{person.name}</p><p className="truncate text-[10px] text-white/45">{person.character}</p></div>)}</div></div>}
                 {'recommendations' in activeMovie && activeMovie.recommendations.length > 0 && <div><h3 className="text-sm font-bold">More like this</h3><div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">{activeMovie.recommendations.slice(0, 6).map((movie) => <button key={movie.id} className="group relative aspect-video overflow-hidden rounded-md text-left" onClick={() => openMovie(movie)}><img src={movie.backdrop || movie.poster} alt="" className="h-full w-full object-cover transition group-hover:scale-105" /><span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 to-transparent px-2 pb-2 pt-6 text-xs font-bold">{movie.title}</span></button>)}</div></div>}
               </div>
-            </>
-          )}
-        </DialogContent>
-      </Dialog>
+          </dialog>
+        </>
+      )}
     </main>
   );
 }
