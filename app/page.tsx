@@ -373,13 +373,17 @@ export default function Home() {
               <h2 className="mb-3 px-5 text-base font-bold tracking-[-0.025em] text-white sm:px-8 lg:px-12">{shelf.title}</h2>
               <div className="shelf-scroll flex gap-1.5 overflow-x-auto px-5 pb-2 sm:px-8 lg:px-12">
                 {shelf.items.map((movie) => (
-                  <div key={`${shelf.title}-${movie.id}`} className="movie-card group relative aspect-video w-[42vw] max-w-[235px] min-w-[170px] shrink-0 overflow-hidden rounded-sm bg-card sm:min-w-[205px]">
+                  <div key={`${shelf.title}-${movie.id}`} className="movie-card group relative aspect-video w-[48vw] max-w-[265px] min-w-[190px] shrink-0 overflow-hidden rounded-sm bg-card sm:min-w-[230px]">
                     <img
                       src={movie.poster}
                       alt={`${movie.title} poster`}
                       className="h-full w-full object-cover object-[center_28%] transition duration-300 group-hover:scale-110"
                       loading="lazy"
                     />
+                    <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/90 via-black/10 to-transparent" />
+                    <h3 className="pointer-events-none absolute inset-x-3 bottom-2.5 line-clamp-2 text-sm font-black leading-tight tracking-[-0.035em] text-white drop-shadow-lg sm:text-base">
+                      {movie.title}
+                    </h3>
                     <div className="pointer-events-none absolute inset-0 ring-1 ring-inset ring-white/5 transition group-hover:ring-white/20" />
                   </div>
                 ))}
