@@ -97,7 +97,14 @@ function mapMovie(movie: TmdbMovie) {
 }
 
 function mapMovies(list: TmdbMovie[]) {
-  return list.filter((movie) => Boolean(movie.poster_path || movie.backdrop_path)).map(mapMovie);
+  return list
+    .filter(
+      (movie) =>
+        Boolean(movie.poster_path || movie.backdrop_path) &&
+        !(movie.genre_ids ?? []).includes(27) &&
+        (movie.vote_average ?? 0) >= 7,
+    )
+    .map(mapMovie);
 }
 
 async function tmdb<T>(path: string, params: Record<string, string> = {}): Promise<T> {

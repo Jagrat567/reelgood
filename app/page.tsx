@@ -511,7 +511,7 @@ export default function Home() {
               <div className="shelf-scroll flex gap-1.5 overflow-x-auto px-5 pb-2 sm:px-8 lg:px-12">
                 {shelf.items.length === 0 && <p className="py-8 text-sm text-white/55">No movies found. Try another title.</p>}
                 {shelf.items.map((movie) => (
-                  <button key={`${shelf.title}-${movie.id}`} className="movie-card group relative aspect-video w-[48vw] max-w-[265px] min-w-[190px] shrink-0 overflow-hidden rounded-sm bg-card text-left sm:min-w-[230px]" onClick={() => openMovie(movie)} aria-label={`View details for ${movie.title}`}>
+                  <button key={`${shelf.title}-${movie.id}`} className="movie-card group relative h-[200px] w-[48vw] max-w-[320px] min-w-[230px] shrink-0 overflow-hidden rounded-sm bg-card text-left sm:min-w-[280px]" onClick={() => openMovie(movie)} aria-label={`View details for ${movie.title}`}>
                     <img src={movie.backdrop || movie.poster} alt="" className="h-full w-full object-cover transition duration-300 group-hover:scale-110" loading="lazy" />
                     <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/90 via-black/10 to-transparent" />
                     <h3 className="pointer-events-none absolute inset-x-3 bottom-2.5 line-clamp-2 text-sm font-black leading-tight tracking-[-0.035em] text-white drop-shadow-lg sm:text-base">{movie.title}</h3>
