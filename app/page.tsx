@@ -51,6 +51,11 @@ type HomeShelves = {
   popular: Movie[];
   nowPlaying: Movie[];
   topPicks: Movie[];
+  newReleases: Movie[];
+  actionHits: Movie[];
+  comedyFavorites: Movie[];
+  scifiWorlds: Movie[];
+  hiddenGems: Movie[];
 };
 
 const fallbackMovies: Movie[] = [
@@ -180,6 +185,9 @@ export default function Home() {
   const [searchResults, setSearchResults] = useState<Movie[] | null>(null);
   const [isLive, setIsLive] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchError, setSearchError] = useState('');
+  const [isSurprising, setIsSurprising] = useState(false);
   const [selectedMovie, setSelectedMovie] = useState<Movie | null>(null);
   const [details, setDetails] = useState<MovieDetails | null>(null);
   const [detailsLoading, setDetailsLoading] = useState(false);
@@ -198,7 +206,7 @@ export default function Home() {
 
   useEffect(() => {
     const controller = new AbortController();
-    fetch('/api/tmdb?view=home', { signal: controller.signal })
+    fetch(`/api/tmdb?view=home&seed=${Date.now()}`, { signal: controller.signal, cache: 'no-store' })
       .then((response) => {
         if (!response.ok) throw new Error('TMDB_UNAVAILABLE');
         return response.json() as Promise<HomeShelves>;
@@ -215,7 +223,7 @@ export default function Home() {
   useEffect(() => {
     if (!isLive || query.trim()) return;
     const controller = new AbortController();
-    fetch(`/api/tmdb?view=discover&mood=${encodeURIComponent(mood)}`, { signal: controller.signal })
+    fetch(`/api/tmdb?view=discover&mood=${encodeURIComponent(mood)}&seed=${Date.now()}`, { signal: controller.signal, cache: 'no-store' })
       .then((response) => {
         if (!response.ok) throw new Error('DISCOVER_FAILED');
         return response.json() as Promise<{ results: Movie[] }>;
@@ -227,25 +235,38 @@ export default function Home() {
 
   useEffect(() => {
     const normalizedQuery = query.trim();
-    if (!isLive || normalizedQuery.length < 2) {
-      const timer = window.setTimeout(() => setSearchResults(null), 0);
+    if (normalizedQuery.length < 2) {
+      const timer = window.setTimeout(() => {
+        setSearchResults(null);
+        setSearchError('');
+      }, 0);
       return () => window.clearTimeout(timer);
     }
     const controller = new AbortController();
     const timer = window.setTimeout(() => {
-      fetch(`/api/tmdb?view=search&q=${encodeURIComponent(normalizedQuery)}`, { signal: controller.signal })
+      setIsSearching(true);
+      setSearchError('');
+      fetch(`/api/tmdb?view=search&q=${encodeURIComponent(normalizedQuery)}`, { signal: controller.signal, cache: 'no-store' })
         .then((response) => {
           if (!response.ok) throw new Error('SEARCH_FAILED');
           return response.json() as Promise<{ results: Movie[] }>;
         })
-        .then((data) => setSearchResults(data.results))
-        .catch(() => undefined);
+        .then((data) => {
+          setSearchResults(data.results);
+          setIsLive(true);
+        })
+        .catch((error) => {
+          if (error instanceof Error && error.name === 'AbortError') return;
+          setSearchResults([]);
+          setSearchError('Search is temporarily unavailable. Please try again.');
+        })
+        .finally(() => setIsSearching(false));
     }, 350);
     return () => {
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [isLive, query]);
+  }, [query]);
 
   const fallbackRanked = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -269,14 +290,21 @@ export default function Home() {
     : moodResults ?? homeShelves?.topPicks ?? fallbackRanked;
   const trending = homeShelves?.trending ?? fallbackTrending;
   const featured = topPicks[0] ?? trending[0] ?? fallbackMovies[0];
-  const shelves = [
-    { title: query.trim() ? `Search results for “${query.trim()}”` : `Top picks for a ${mood.toLowerCase()} mood`, items: topPicks },
-    { title: 'Trending now', items: trending },
-    ...(homeShelves ? [
-      { title: 'Popular on TMDb', items: homeShelves.popular },
-      { title: 'Now playing in cinemas', items: homeShelves.nowPlaying },
-    ] : []),
-  ];
+  const shelves = query.trim().length >= 2
+    ? [{ title: `Search results for “${query.trim()}”`, items: topPicks }]
+    : [
+        { title: `Top picks for a ${mood.toLowerCase()} mood`, items: topPicks },
+        { title: 'Trending now', items: trending },
+        ...(homeShelves ? [
+          { title: 'Popular tonight', items: homeShelves.popular },
+          { title: 'Now playing in cinemas', items: homeShelves.nowPlaying },
+          { title: 'Fresh releases', items: homeShelves.newReleases },
+          { title: 'Adrenaline rush', items: homeShelves.actionHits },
+          { title: 'Comedy favorites', items: homeShelves.comedyFavorites },
+          { title: 'Sci-fi worlds', items: homeShelves.scifiWorlds },
+          { title: 'Hidden gems', items: homeShelves.hiddenGems },
+        ] : []),
+      ];
 
   useEffect(() => {
     catalogRef.current = [
@@ -284,6 +312,11 @@ export default function Home() {
       ...trending,
       ...(homeShelves?.popular ?? []),
       ...(homeShelves?.nowPlaying ?? []),
+      ...(homeShelves?.newReleases ?? []),
+      ...(homeShelves?.actionHits ?? []),
+      ...(homeShelves?.comedyFavorites ?? []),
+      ...(homeShelves?.scifiWorlds ?? []),
+      ...(homeShelves?.hiddenGems ?? []),
     ];
   }, [homeShelves, topPicks, trending]);
 
@@ -356,11 +389,25 @@ export default function Home() {
     });
   }
 
-  function surpriseMe() {
-    setMood(moods[Math.floor(Math.random() * moods.length)]);
-    setGenre('All');
+  async function surpriseMe() {
+    setIsSurprising(true);
     setQuery('');
-    document.getElementById('recommendations')?.scrollIntoView({ behavior: 'smooth' });
+    setSearchResults(null);
+    setSearchError('');
+    try {
+      const response = await fetch(`/api/tmdb?view=discover&mood=${encodeURIComponent(mood)}&seed=${Date.now()}`, { cache: 'no-store' });
+      if (!response.ok) throw new Error('SURPRISE_FAILED');
+      const data = await response.json() as { results: Movie[] };
+      setMoodResults(data.results);
+      setIsLive(true);
+    } catch {
+      const matching = fallbackMovies.filter((movie) => movie.moods.includes(mood));
+      setMoodResults((matching.length ? matching : fallbackMovies).sort(() => Math.random() - 0.5));
+      setSearchError('Live picks were unavailable, so we shuffled the curated catalog instead.');
+    } finally {
+      setIsSurprising(false);
+      window.setTimeout(() => document.getElementById('recommendations')?.scrollIntoView({ behavior: 'smooth' }), 0);
+    }
   }
 
   function openMovie(movie: Movie) {
@@ -393,8 +440,8 @@ export default function Home() {
           <a className="transition-colors hover:text-foreground" href="#recommendations">Movies</a>
           <a className="transition-colors hover:text-foreground" href="#watchlist">My list <span className="ml-1 text-primary">{saved.length}</span></a>
         </nav>
-        <Button variant="outline" className="h-10 rounded-full border-white/10 bg-white/[.04] px-4 text-foreground hover:bg-white/[.08]" onClick={surpriseMe}>
-          <Shuffle data-icon="inline-start" /> Surprise me
+        <Button variant="outline" className="h-10 rounded-full border-white/10 bg-white/[.04] px-4 text-foreground hover:bg-white/[.08]" onClick={surpriseMe} disabled={isSurprising}>
+          {isSurprising ? <LoaderCircle className="animate-spin" data-icon="inline-start" /> : <Shuffle data-icon="inline-start" />} {isSurprising ? 'Finding one…' : 'Surprise me'}
         </Button>
       </header>
 
@@ -418,15 +465,16 @@ export default function Home() {
                 </button>
               ))}
             </fieldset>
-            <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+            <form className="mt-4 flex flex-col gap-2 sm:flex-row" onSubmit={(event) => { event.preventDefault(); document.getElementById('recommendations')?.scrollIntoView({ behavior: 'smooth' }); }}>
               <div className="relative flex-1">
                 <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
                 <Input aria-label="Search movies" placeholder="Search thousands of movies" className="h-11 rounded-xl border-white/10 bg-black/15 pl-10" value={query} onChange={(event) => setQuery(event.target.value)} />
               </div>
-              <Button className="h-11 rounded-xl px-5" onClick={() => document.getElementById('recommendations')?.scrollIntoView({ behavior: 'smooth' })}>
-                Find my movie <ChevronRight data-icon="inline-end" />
+              <Button type="submit" className="h-11 rounded-xl px-5" disabled={query.trim().length < 2 || isSearching}>
+                {isSearching ? <LoaderCircle className="animate-spin" /> : 'Search'} {!isSearching && <ChevronRight data-icon="inline-end" />}
               </Button>
-            </div>
+            </form>
+            {searchError && <output className="mt-2 block text-xs text-amber-300">{searchError}</output>}
           </div>
           <div className="mt-6 flex items-center gap-5 text-xs text-muted-foreground">
             <span className="flex items-center gap-1.5"><Film className="size-3.5 text-primary" /> {isLive ? 'Live movie catalog' : `${fallbackMovies.length} preview films`}</span>
@@ -461,6 +509,7 @@ export default function Home() {
             <div key={shelf.title}>
               <h2 className="mb-3 px-5 text-base font-bold tracking-[-0.025em] text-white sm:px-8 lg:px-12">{shelf.title}</h2>
               <div className="shelf-scroll flex gap-1.5 overflow-x-auto px-5 pb-2 sm:px-8 lg:px-12">
+                {shelf.items.length === 0 && <p className="py-8 text-sm text-white/55">No movies found. Try another title.</p>}
                 {shelf.items.map((movie) => (
                   <button key={`${shelf.title}-${movie.id}`} className="movie-card group relative aspect-video w-[48vw] max-w-[265px] min-w-[190px] shrink-0 overflow-hidden rounded-sm bg-card text-left sm:min-w-[230px]" onClick={() => openMovie(movie)} aria-label={`View details for ${movie.title}`}>
                     <img src={movie.backdrop || movie.poster} alt="" className="h-full w-full object-cover transition duration-300 group-hover:scale-110" loading="lazy" />

@@ -60,6 +60,26 @@ type TmdbDetails = TmdbMovie & {
   'watch/providers'?: { results: Record<string, TmdbProviderRegion> };
 };
 
+function numberFromSeed(seed: string, offset: number, max: number) {
+  let hash = offset + 2166136261;
+  for (let index = 0; index < seed.length; index += 1) {
+    hash ^= seed.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (Math.abs(hash) % max) + 1;
+}
+
+function shuffleWithSeed<T>(items: T[], seed: string, offset = 0) {
+  const shuffled = [...items];
+  let state = numberFromSeed(seed, offset, 2147483646);
+  for (let index = shuffled.length - 1; index > 0; index -= 1) {
+    state = (state * 48271) % 2147483647;
+    const target = state % (index + 1);
+    [shuffled[index], shuffled[target]] = [shuffled[target], shuffled[index]];
+  }
+  return shuffled;
+}
+
 function mapMovie(movie: TmdbMovie) {
   const releaseDate = movie.release_date ?? movie.first_air_date ?? '';
   return {
@@ -96,29 +116,59 @@ async function tmdb<T>(path: string, params: Record<string, string> = {}): Promi
 
 export async function GET(request: NextRequest) {
   const view = request.nextUrl.searchParams.get('view') ?? 'home';
+  const seed = request.nextUrl.searchParams.get('seed') ?? Date.now().toString();
 
   try {
     if (view === 'home') {
-      const [trending, popular, nowPlaying, acclaimed] = await Promise.all([
+      const currentDate = new Date().toISOString().slice(0, 10);
+      const [trendingDay, trendingWeek, popular, nowPlaying, acclaimed, newReleases, actionHits, comedyFavorites, scifiWorlds, hiddenGems] = await Promise.all([
+        tmdb<TmdbList>('/trending/movie/day', { language: 'en-US' }),
         tmdb<TmdbList>('/trending/movie/week', { language: 'en-US' }),
-        tmdb<TmdbList>('/movie/popular', { language: 'en-US', region: 'IN' }),
-        tmdb<TmdbList>('/movie/now_playing', { language: 'en-US', region: 'IN' }),
+        tmdb<TmdbList>('/movie/popular', { language: 'en-US', region: 'IN', page: String(numberFromSeed(seed, 1, 12)) }),
+        tmdb<TmdbList>('/movie/now_playing', { language: 'en-US', region: 'IN', page: String(numberFromSeed(seed, 2, 3)) }),
         tmdb<TmdbList>('/discover/movie', {
           language: 'en-US',
           include_adult: 'false',
           sort_by: 'vote_average.desc',
           'vote_count.gte': '1500',
+          page: String(numberFromSeed(seed, 3, 10)),
+        }),
+        tmdb<TmdbList>('/discover/movie', {
+          language: 'en-US', include_adult: 'false', sort_by: 'primary_release_date.desc',
+          'primary_release_date.gte': '2024-01-01', 'primary_release_date.lte': currentDate,
+          'vote_count.gte': '100', page: String(numberFromSeed(seed, 4, 12)),
+        }),
+        tmdb<TmdbList>('/discover/movie', {
+          language: 'en-US', include_adult: 'false', sort_by: 'popularity.desc', with_genres: '28',
+          'vote_count.gte': '300', page: String(numberFromSeed(seed, 5, 18)),
+        }),
+        tmdb<TmdbList>('/discover/movie', {
+          language: 'en-US', include_adult: 'false', sort_by: 'popularity.desc', with_genres: '35',
+          'vote_count.gte': '250', page: String(numberFromSeed(seed, 6, 18)),
+        }),
+        tmdb<TmdbList>('/discover/movie', {
+          language: 'en-US', include_adult: 'false', sort_by: 'popularity.desc', with_genres: '878',
+          'vote_count.gte': '250', page: String(numberFromSeed(seed, 7, 16)),
+        }),
+        tmdb<TmdbList>('/discover/movie', {
+          language: 'en-US', include_adult: 'false', sort_by: 'vote_average.desc',
+          'vote_count.gte': '150', 'vote_count.lte': '1500', page: String(numberFromSeed(seed, 8, 16)),
         }),
       ]);
 
       return NextResponse.json(
         {
-          trending: mapMovies(trending.results),
-          popular: mapMovies(popular.results),
-          nowPlaying: mapMovies(nowPlaying.results),
-          topPicks: mapMovies(acclaimed.results),
+          trending: mapMovies(shuffleWithSeed([...trendingDay.results, ...trendingWeek.results], seed, 10)).slice(0, 20),
+          popular: mapMovies(shuffleWithSeed(popular.results, seed, 11)),
+          nowPlaying: mapMovies(shuffleWithSeed(nowPlaying.results, seed, 12)),
+          topPicks: mapMovies(shuffleWithSeed(acclaimed.results, seed, 13)),
+          newReleases: mapMovies(shuffleWithSeed(newReleases.results, seed, 14)),
+          actionHits: mapMovies(shuffleWithSeed(actionHits.results, seed, 15)),
+          comedyFavorites: mapMovies(shuffleWithSeed(comedyFavorites.results, seed, 16)),
+          scifiWorlds: mapMovies(shuffleWithSeed(scifiWorlds.results, seed, 17)),
+          hiddenGems: mapMovies(shuffleWithSeed(hiddenGems.results, seed, 18)),
         },
-        { headers: { 'Cache-Control': 'public, s-maxage=900, stale-while-revalidate=3600' } },
+        { headers: { 'Cache-Control': 'no-store' } },
       );
     }
 
@@ -130,7 +180,7 @@ export async function GET(request: NextRequest) {
         language: 'en-US',
         include_adult: 'false',
       });
-      return NextResponse.json({ results: mapMovies(data.results) });
+      return NextResponse.json({ results: mapMovies(data.results) }, { headers: { 'Cache-Control': 'no-store' } });
     }
 
     if (view === 'discover') {
@@ -142,8 +192,12 @@ export async function GET(request: NextRequest) {
         sort_by: 'popularity.desc',
         'vote_count.gte': '250',
         with_genres: genreIds.join('|'),
+        page: String(numberFromSeed(seed, 20, 18)),
       });
-      return NextResponse.json({ results: mapMovies(data.results), mood });
+      return NextResponse.json(
+        { results: mapMovies(shuffleWithSeed(data.results, seed, 21)), mood },
+        { headers: { 'Cache-Control': 'no-store' } },
+      );
     }
 
     if (view === 'details') {
@@ -190,6 +244,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'UNKNOWN_VIEW' }, { status: 400 });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'TMDB_REQUEST_FAILED';
+    console.error('[api/tmdb] request failed', { view, message });
     const status = message === 'TMDB_NOT_CONFIGURED' ? 503 : 502;
     return NextResponse.json({ error: message }, { status });
   }
