@@ -24,7 +24,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     <html lang="en" className="dark">
       <body className="antialiased">
         {children}
-        {process.env.VERCEL === '1' && <Analytics />}
+        <Analytics />
       </body>
     </html>
   );
