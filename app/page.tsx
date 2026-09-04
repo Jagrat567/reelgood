@@ -2,11 +2,13 @@
 /* oxlint-disable next/no-img-element -- TMDb artwork is served directly from its image CDN. */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { track } from '@vercel/analytics';
 import {
   Bookmark,
   Check,
   ChevronRight,
   ExternalLink,
+  Eye,
   Film,
   Heart,
   LoaderCircle,
@@ -15,6 +17,8 @@ import {
   Shuffle,
   SlidersHorizontal,
   Star,
+  ThumbsDown,
+  ThumbsUp,
   X,
 } from 'lucide-react';
 
@@ -25,6 +29,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 
 type Movie = {
   id: number;
+  mediaType?: 'movie' | 'tv';
   title: string;
   year: number;
   runtime: string;
@@ -56,8 +61,10 @@ type HomeShelves = {
   actionHits: Movie[];
   comedyFavorites: Movie[];
   scifiWorlds: Movie[];
-  hiddenGems: Movie[];
 };
+
+type StreamingProvider = { id: number; name: string; logo: string };
+type FeedbackValue = 'liked' | 'disliked' | 'watched';
 
 const fallbackMovies: Movie[] = [
   {
@@ -166,6 +173,7 @@ const moods = [
 const genres = ['All', 'Action', 'Adventure', 'Animation', 'Comedy', 'Crime', 'Drama', 'Family', 'Fantasy', 'Mystery', 'Romance', 'Sci-fi', 'Thriller'];
 const fallbackTrending = [...fallbackMovies].sort((a, b) => b.rating - a.rating);
 const watchlistStorageKey = 'reelgood-watchlist:v1';
+const feedbackStorageKey = 'reelgood-feedback:v1';
 
 type ModelContext = {
   registerTool: (
@@ -196,11 +204,24 @@ function pickRandomMovie(items: Movie[]) {
   return items[Math.floor(Math.random() * items.length)];
 }
 
+function movieKey(movie: Pick<Movie, 'id' | 'mediaType'>) {
+  return `${movie.mediaType ?? 'movie'}:${movie.id}`;
+}
+
+function trackEvent(name: string, properties?: Record<string, string | number | boolean>) {
+  try {
+    track(name, properties);
+  } catch {
+    // Analytics must never interrupt movie discovery.
+  }
+}
+
 export default function Home() {
   const [mood, setMood] = useState('Thoughtful');
   const [genre, setGenre] = useState('All');
   const [query, setQuery] = useState('');
-  const [saved, setSaved] = useState<number[]>([]);
+  const [saved, setSaved] = useState<string[]>([]);
+  const [feedback, setFeedback] = useState<Record<string, FeedbackValue>>({});
   const [homeShelves, setHomeShelves] = useState<HomeShelves | null>(null);
   const [featuredMovie, setFeaturedMovie] = useState<Movie | null>(null);
   const [featuredPool, setFeaturedPool] = useState<Movie[]>(fallbackMovies);
@@ -213,6 +234,11 @@ export default function Home() {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [languageFilter, setLanguageFilter] = useState('All');
   const [minimumRating, setMinimumRating] = useState(7);
+  const [runtimeFilter, setRuntimeFilter] = useState('Any');
+  const [providerFilter, setProviderFilter] = useState('All');
+  const [providers, setProviders] = useState<StreamingProvider[]>([]);
+  const [remoteFilteredResults, setRemoteFilteredResults] = useState<Movie[] | null>(null);
+  const [isFiltering, setIsFiltering] = useState(false);
   const [selectedMovie, setSelectedMovie] = useState<Movie | null>(null);
   const [details, setDetails] = useState<MovieDetails | null>(null);
   const [detailsLoading, setDetailsLoading] = useState(false);
@@ -223,9 +249,23 @@ export default function Home() {
     let timer: number | undefined;
     try {
       const stored = window.localStorage.getItem(watchlistStorageKey);
-      if (stored) timer = window.setTimeout(() => setSaved(JSON.parse(stored)), 0);
+      if (stored) {
+        const parsed = JSON.parse(stored) as Array<string | number>;
+        timer = window.setTimeout(() => setSaved(parsed.map((item) => typeof item === 'number' ? `movie:${item}` : item)), 0);
+      }
     } catch {
       timer = window.setTimeout(() => setSaved([]), 0);
+    }
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    let timer: number | undefined;
+    try {
+      const stored = window.localStorage.getItem(feedbackStorageKey);
+      if (stored) timer = window.setTimeout(() => setFeedback(JSON.parse(stored)), 0);
+    } catch {
+      timer = window.setTimeout(() => setFeedback({}), 0);
     }
     return () => window.clearTimeout(timer);
   }, []);
@@ -252,17 +292,36 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    if (isSurprising || featuredPool.length < 2) return;
+    const preferredPool = featuredPool.filter((movie) => feedback[movieKey(movie)] !== 'disliked' && feedback[movieKey(movie)] !== 'watched');
+    const rotationPool = preferredPool.length >= 2
+      ? preferredPool
+      : featuredPool.filter((movie) => feedback[movieKey(movie)] !== 'disliked');
+    if (isSurprising || rotationPool.length < 2) return;
 
     const timer = window.setInterval(() => {
       setFeaturedMovie((current) => {
-        const currentIndex = featuredPool.findIndex((movie) => movie.id === current?.id);
-        return featuredPool[(currentIndex + 1 + featuredPool.length) % featuredPool.length];
+        const currentIndex = rotationPool.findIndex((movie) => movie.id === current?.id);
+        return rotationPool[(currentIndex + 1 + rotationPool.length) % rotationPool.length];
       });
     }, 5000);
 
     return () => window.clearInterval(timer);
-  }, [featuredPool, isSurprising]);
+  }, [featuredPool, feedback, isSurprising]);
+
+  useEffect(() => {
+    if (!filtersOpen || providers.length > 0) return;
+    const controller = new AbortController();
+    fetch('/api/tmdb?view=providers', { signal: controller.signal })
+      .then((response) => {
+        if (!response.ok) throw new Error('PROVIDERS_FAILED');
+        return response.json() as Promise<{ providers: StreamingProvider[] }>;
+      })
+      .then((data) => setProviders(data.providers))
+      .catch((error) => {
+        if (error instanceof Error && error.name === 'AbortError') return;
+      });
+    return () => controller.abort();
+  }, [filtersOpen, providers.length]);
 
   useEffect(() => {
     const normalizedQuery = query.trim();
@@ -318,19 +377,27 @@ export default function Home() {
   const unfilteredTopPicks = query.trim().length >= 2
     ? searchResults ?? fallbackRanked
     : homeShelves?.topPicks ?? fallbackRanked;
-  const filterMovies = (items: Movie[]) => items.filter((movie) => {
-    const languageMatch = languageFilter === 'All'
-      || (languageFilter === 'Bollywood' && movie.language === 'hi')
-      || (languageFilter === 'Hollywood' && (movie.language ?? 'en') === 'en');
-    const genreMatch = genre === 'All' || movie.genres.includes(genre);
-    return languageMatch && genreMatch && movie.rating >= minimumRating;
-  });
+  const filterMovies = (items: Movie[]) => items
+    .filter((movie) => {
+      const languageMatch = languageFilter === 'All'
+        || (languageFilter === 'Bollywood' && movie.language === 'hi')
+        || (languageFilter === 'Hollywood' && (movie.language ?? 'en') === 'en');
+      const genreMatch = genre === 'All' || movie.genres.includes(genre);
+      return feedback[movieKey(movie)] !== 'disliked' && languageMatch && genreMatch && movie.rating >= minimumRating;
+    })
+    .sort((left, right) => {
+      const score = (movie: Movie) => feedback[movieKey(movie)] === 'liked' ? 2 : feedback[movieKey(movie)] === 'watched' ? -1 : 0;
+      return score(right) - score(left);
+    });
   const topPicks = filterMovies(unfilteredTopPicks).slice(0, 10);
   const trending = filterMovies(homeShelves?.trending ?? fallbackTrending).slice(0, 10);
   const featured = featuredMovie ?? topPicks[0] ?? trending[0] ?? fallbackMovies[0];
-  const activeFilterCount = Number(languageFilter !== 'All') + Number(genre !== 'All') + Number(minimumRating > 7);
+  const activeFilterCount = Number(languageFilter !== 'All')
+    + Number(genre !== 'All')
+    + Number(minimumRating > 7)
+    + Number(runtimeFilter !== 'Any')
+    + Number(providerFilter !== 'All');
   const defaultShelves = [
-    { title: 'Top picks for a thoughtful mood', items: topPicks },
     { title: 'Trending now', items: trending },
     ...(homeShelves ? [
       { title: 'Popular tonight', items: filterMovies(homeShelves.popular).slice(0, 10) },
@@ -339,18 +406,61 @@ export default function Home() {
       { title: 'Adrenaline rush', items: filterMovies(homeShelves.actionHits).slice(0, 10) },
       { title: 'Comedy favorites', items: filterMovies(homeShelves.comedyFavorites).slice(0, 10) },
       { title: 'Sci-fi worlds', items: filterMovies(homeShelves.scifiWorlds).slice(0, 10) },
-      { title: 'Hidden gems', items: filterMovies(homeShelves.hiddenGems).slice(0, 10) },
     ] : []),
   ];
-  const combinedFilteredMovies = Array.from(
-    new Map(defaultShelves.flatMap((shelf) => shelf.items).map((movie) => [movie.id, movie])).values(),
+  const locallyFilteredMovies = Array.from(
+    new Map(defaultShelves.flatMap((shelf) => shelf.items).map((movie) => [movieKey(movie), movie])).values(),
   );
+  const combinedFilteredMovies = remoteFilteredResults === null
+    ? locallyFilteredMovies
+    : filterMovies(remoteFilteredResults);
   const shelves = query.trim().length >= 2
     ? [{ title: `Search results for “${query.trim()}”`, items: topPicks }]
     : activeFilterCount > 0
       ? [{ title: 'Movies matching your filters', items: combinedFilteredMovies }]
       : defaultShelves;
   const isFilteredView = activeFilterCount > 0 && query.trim().length < 2;
+
+  useEffect(() => {
+    const hasFilters = languageFilter !== 'All'
+      || genre !== 'All'
+      || minimumRating > 7
+      || runtimeFilter !== 'Any'
+      || providerFilter !== 'All';
+    if (!hasFilters || query.trim().length >= 2) {
+      const timer = window.setTimeout(() => setRemoteFilteredResults(null), 0);
+      return () => window.clearTimeout(timer);
+    }
+
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      const params = new URLSearchParams({
+        view: 'filter',
+        industry: languageFilter,
+        genre,
+        minRating: String(minimumRating),
+        runtime: runtimeFilter,
+        provider: providerFilter === 'All' ? '' : providerFilter,
+        seed: createRecommendationSeed(),
+      });
+      setIsFiltering(true);
+      fetch(`/api/tmdb?${params}`, { signal: controller.signal, cache: 'no-store' })
+        .then((response) => {
+          if (!response.ok) throw new Error('FILTER_FAILED');
+          return response.json() as Promise<{ results: Movie[] }>;
+        })
+        .then((data) => setRemoteFilteredResults(data.results))
+        .catch((error) => {
+          if (error instanceof Error && error.name === 'AbortError') return;
+          setRemoteFilteredResults([]);
+        })
+        .finally(() => setIsFiltering(false));
+    }, 250);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [genre, languageFilter, minimumRating, providerFilter, query, runtimeFilter]);
 
   useEffect(() => {
     catalogRef.current = [
@@ -362,7 +472,6 @@ export default function Home() {
       ...(homeShelves?.actionHits ?? []),
       ...(homeShelves?.comedyFavorites ?? []),
       ...(homeShelves?.scifiWorlds ?? []),
-      ...(homeShelves?.hiddenGems ?? []),
     ];
   }, [homeShelves, topPicks, trending]);
 
@@ -413,7 +522,8 @@ export default function Home() {
             const movie = catalogRef.current.find((item) => item.title.toLowerCase() === value?.title?.trim().toLowerCase());
             if (!movie) throw new Error('Movie title is not in the current catalog.');
             setSaved((current) => {
-              const next = current.includes(movie.id) ? current : [...current, movie.id];
+              const key = movieKey(movie);
+              const next = current.includes(key) ? current : [...current, key];
               window.localStorage.setItem(watchlistStorageKey, JSON.stringify(next));
               return next;
             });
@@ -427,10 +537,24 @@ export default function Home() {
     return () => lifecycle.abort();
   }, []);
 
-  function toggleSaved(id: number) {
+  function toggleSaved(movie: Pick<Movie, 'id' | 'mediaType'>) {
+    const key = movieKey(movie);
     setSaved((current) => {
-      const next = current.includes(id) ? current.filter((movieId) => movieId !== id) : [...current, id];
+      const next = current.includes(key) ? current.filter((item) => item !== key) : [...current, key];
       window.localStorage.setItem(watchlistStorageKey, JSON.stringify(next));
+      trackEvent('watchlist_toggled', { media_type: movie.mediaType ?? 'movie', action: current.includes(key) ? 'removed' : 'saved' });
+      return next;
+    });
+  }
+
+  function updateFeedback(movie: Pick<Movie, 'id' | 'mediaType'>, value: FeedbackValue) {
+    const key = movieKey(movie);
+    setFeedback((current) => {
+      const next = { ...current };
+      if (next[key] === value) delete next[key];
+      else next[key] = value;
+      window.localStorage.setItem(feedbackStorageKey, JSON.stringify(next));
+      trackEvent('movie_feedback', { media_type: movie.mediaType ?? 'movie', feedback: next[key] ?? 'removed' });
       return next;
     });
   }
@@ -445,9 +569,11 @@ export default function Home() {
       if (!response.ok) throw new Error('SURPRISE_FAILED');
       const data = await response.json() as { results: Movie[] };
       if (requestId !== featuredRequestRef.current) return;
-      const nextMovie = data.results.find((movie) => movie.id !== featured.id) ?? data.results[0];
+      const eligible = data.results.filter((movie) => feedback[movieKey(movie)] !== 'disliked' && feedback[movieKey(movie)] !== 'watched');
+      const candidatePool = eligible.length ? eligible : data.results.filter((movie) => feedback[movieKey(movie)] !== 'disliked');
+      const nextMovie = candidatePool.find((movie) => movieKey(movie) !== movieKey(featured)) ?? candidatePool[0];
       if (nextMovie) {
-        setFeaturedPool(data.results);
+        setFeaturedPool(candidatePool);
         setFeaturedMovie(nextMovie);
       }
       setIsLive(true);
@@ -464,20 +590,23 @@ export default function Home() {
   }
 
   function surpriseMe() {
+    trackEvent('surprise_me', { mood });
     void updateFeaturedForMood(mood);
   }
 
   function chooseMood(nextMood: string) {
     setMood(nextMood);
+    trackEvent('mood_selected', { mood: nextMood });
     void updateFeaturedForMood(nextMood);
   }
 
   function openMovie(movie: Movie) {
+    trackEvent('movie_details_opened', { media_type: movie.mediaType ?? 'movie' });
     setSelectedMovie(movie);
     setDetails(null);
     if (!isLive) return;
     setDetailsLoading(true);
-    fetch(`/api/tmdb?view=details&id=${movie.id}&region=IN`)
+    fetch(`/api/tmdb?view=details&id=${movie.id}&type=${movie.mediaType ?? 'movie'}&region=IN`)
       .then((response) => {
         if (!response.ok) throw new Error('DETAILS_FAILED');
         return response.json() as Promise<{ movie: MovieDetails }>;
@@ -524,10 +653,10 @@ export default function Home() {
                 </button>
               ))}
             </fieldset>
-            <form className="mt-4 flex flex-col gap-2 sm:flex-row" onSubmit={(event) => { event.preventDefault(); document.getElementById('recommendations')?.scrollIntoView({ behavior: 'smooth' }); }}>
+            <form className="mt-4 flex flex-col gap-2 sm:flex-row" onSubmit={(event) => { event.preventDefault(); trackEvent('search_submitted'); document.getElementById('recommendations')?.scrollIntoView({ behavior: 'smooth' }); }}>
               <div className="relative flex-1">
                 <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                <Input aria-label="Search movies" placeholder="Search thousands of movies" className="h-11 rounded-xl border-white/10 bg-black/15 pl-10" value={query} onChange={(event) => setQuery(event.target.value)} />
+                <Input aria-label="Search movies and series" placeholder="Search movies and series" className="h-11 rounded-xl border-white/10 bg-black/15 pl-10" value={query} onChange={(event) => setQuery(event.target.value)} />
               </div>
               <Button type="submit" className="h-11 rounded-xl px-5" disabled={query.trim().length < 2 || isSearching}>
                 {isSearching ? <LoaderCircle className="animate-spin" /> : 'Search'} {!isSearching && <ChevronRight data-icon="inline-end" />}
@@ -539,17 +668,17 @@ export default function Home() {
 
         <div className="relative min-h-[430px] sm:min-h-[540px] lg:min-h-[620px]">
           <div className="absolute inset-x-5 bottom-3 top-0 rotate-2 rounded-[26px] border border-white/10 bg-white/[.035] sm:inset-x-8 sm:rounded-[34px]" />
-          <article key={featured.id} aria-live="polite" className="featured-card group absolute inset-0 overflow-hidden rounded-[22px] border border-white/10 bg-card shadow-[0_40px_100px_rgba(0,0,0,.42)] sm:rounded-[30px]">
+          <article key={movieKey(featured)} aria-live="polite" className="featured-card group absolute inset-0 overflow-hidden rounded-[22px] border border-white/10 bg-card shadow-[0_40px_100px_rgba(0,0,0,.42)] sm:rounded-[30px]">
             <img src={featured.backdrop || featured.poster} alt={`${featured.title} artwork`} className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-[1.025]" />
             <div className="absolute inset-0 bg-gradient-to-t from-[#090a0d] via-[#090a0d]/38 to-transparent" />
             <div className="absolute inset-x-0 bottom-0 p-5 sm:p-8">
-              <div className="mb-3 flex flex-wrap items-center gap-2"><Badge className="bg-primary text-primary-foreground">#1 match</Badge><Badge variant="outline" className="border-white/20 bg-black/30 text-white backdrop-blur">Because you chose {mood.toLowerCase()}</Badge></div>
+              <div className="mb-3 flex flex-wrap items-center gap-2"><Badge className="bg-primary text-primary-foreground">#1 match</Badge><Badge variant="outline" className="border-white/20 bg-black/30 text-white backdrop-blur">{featured.mediaType === 'tv' ? 'Series' : 'Movie'}</Badge><Badge variant="outline" className="border-white/20 bg-black/30 text-white backdrop-blur">Because you chose {mood.toLowerCase()}</Badge></div>
               <h2 className="text-2xl font-semibold tracking-[-0.04em] text-white sm:text-4xl">{featured.title}</h2>
               <div className="mt-2 flex items-center gap-3 text-sm text-white/70"><span>{featured.year}</span><span>•</span>{featured.runtime && <><span>{featured.runtime}</span><span>•</span></>}<span className="flex items-center gap-1 text-amber-300"><Star className="size-3.5 fill-current" /> {featured.rating}</span></div>
               <p className="mt-3 max-w-xl line-clamp-2 text-xs leading-5 text-white/70 sm:mt-4 sm:line-clamp-3 sm:text-sm sm:leading-6">{featured.description}</p>
               <div className="mt-5 flex gap-2">
                 <Button className="h-10 rounded-full px-5" onClick={() => openMovie(featured)}><Play className="fill-current" /> View details</Button>
-                <Button variant="outline" className="h-10 rounded-full border-white/20 bg-black/20 px-4 text-white hover:bg-white/10" onClick={() => toggleSaved(featured.id)}>{saved.includes(featured.id) ? <Check /> : <Bookmark />} {saved.includes(featured.id) ? 'Saved' : 'My list'}</Button>
+                <Button variant="outline" className="h-10 rounded-full border-white/20 bg-black/20 px-4 text-white hover:bg-white/10" onClick={() => toggleSaved(featured)}>{saved.includes(movieKey(featured)) ? <Check /> : <Bookmark />} {saved.includes(movieKey(featured)) ? 'Saved' : 'My list'}</Button>
               </div>
             </div>
           </article>
@@ -558,7 +687,7 @@ export default function Home() {
 
       <section id="recommendations" aria-label="Movie recommendations" className="relative border-t border-white/[.07] bg-[#101010] py-9">
         <div className="mx-auto max-w-[1440px] space-y-8 sm:space-y-9">
-          <div className="px-4 sm:px-8 lg:px-12">
+          <div className="px-5 sm:px-8 lg:px-12">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <Button
                 variant="outline"
@@ -570,13 +699,13 @@ export default function Home() {
                 <SlidersHorizontal className="size-4" /> Filters
                 {activeFilterCount > 0 && <Badge className="ml-1 min-w-5 justify-center bg-primary px-1.5 text-white">{activeFilterCount}</Badge>}
               </Button>
-              <p className="text-xs text-white/45">Bollywood + Hollywood · Rated 7.0 and above</p>
+              <p className="text-xs text-white/45">Movies + series · Bollywood + Hollywood · Rated 7.0 and above</p>
             </div>
             {filtersOpen && (
-              <div id="movie-filters" className="mt-4 grid gap-4 rounded-xl border border-white/10 bg-white/[.035] p-4 sm:grid-cols-3 lg:max-w-3xl">
+              <div id="movie-filters" className="mt-4 grid gap-4 rounded-xl border border-white/10 bg-white/[.035] p-4 sm:grid-cols-2 lg:grid-cols-5">
                 <label className="space-y-1.5 text-xs font-semibold text-white/65">
                   <span>Movie industry</span>
-                  <select value={languageFilter} onChange={(event) => setLanguageFilter(event.target.value)} className="h-10 w-full rounded-lg border border-white/10 bg-[#181818] px-3 text-sm text-white outline-none focus:border-primary">
+                  <select value={languageFilter} onChange={(event) => { setLanguageFilter(event.target.value); trackEvent('filter_changed', { filter: 'industry', value: event.target.value }); }} className="h-10 w-full rounded-lg border border-white/10 bg-[#181818] px-3 text-sm text-white outline-none focus:border-primary">
                     <option value="All">Bollywood + Hollywood</option>
                     <option value="Bollywood">Bollywood only</option>
                     <option value="Hollywood">Hollywood only</option>
@@ -584,39 +713,59 @@ export default function Home() {
                 </label>
                 <label className="space-y-1.5 text-xs font-semibold text-white/65">
                   <span>Genre</span>
-                  <select value={genre} onChange={(event) => setGenre(event.target.value)} className="h-10 w-full rounded-lg border border-white/10 bg-[#181818] px-3 text-sm text-white outline-none focus:border-primary">
+                  <select value={genre} onChange={(event) => { setGenre(event.target.value); trackEvent('filter_changed', { filter: 'genre', value: event.target.value }); }} className="h-10 w-full rounded-lg border border-white/10 bg-[#181818] px-3 text-sm text-white outline-none focus:border-primary">
                     {genres.map((item) => <option key={item} value={item}>{item === 'All' ? 'All genres' : item}</option>)}
                   </select>
                 </label>
                 <label className="space-y-1.5 text-xs font-semibold text-white/65">
                   <span>Minimum rating</span>
-                  <select value={minimumRating} onChange={(event) => setMinimumRating(Number(event.target.value))} className="h-10 w-full rounded-lg border border-white/10 bg-[#181818] px-3 text-sm text-white outline-none focus:border-primary">
+                  <select value={minimumRating} onChange={(event) => { setMinimumRating(Number(event.target.value)); trackEvent('filter_changed', { filter: 'rating', value: event.target.value }); }} className="h-10 w-full rounded-lg border border-white/10 bg-[#181818] px-3 text-sm text-white outline-none focus:border-primary">
                     <option value={7}>7.0+</option>
                     <option value={7.5}>7.5+</option>
                     <option value={8}>8.0+</option>
                     <option value={8.5}>8.5+</option>
                   </select>
                 </label>
-                <Button variant="ghost" className="h-9 justify-self-start px-2 text-xs text-primary sm:col-span-3" onClick={() => { setLanguageFilter('All'); setGenre('All'); setMinimumRating(7); }}>
+                <label className="space-y-1.5 text-xs font-semibold text-white/65">
+                  <span>Runtime</span>
+                  <select value={runtimeFilter} onChange={(event) => { setRuntimeFilter(event.target.value); trackEvent('filter_changed', { filter: 'runtime', value: event.target.value }); }} className="h-10 w-full rounded-lg border border-white/10 bg-[#181818] px-3 text-sm text-white outline-none focus:border-primary">
+                    <option value="Any">Any runtime</option>
+                    <option value="under-90">Under 90 min</option>
+                    <option value="90-120">90–120 min</option>
+                    <option value="120-180">2–3 hours</option>
+                    <option value="over-180">Over 3 hours</option>
+                  </select>
+                </label>
+                <label className="space-y-1.5 text-xs font-semibold text-white/65">
+                  <span>Streaming service</span>
+                  <select value={providerFilter} onChange={(event) => { setProviderFilter(event.target.value); trackEvent('filter_changed', { filter: 'provider', value: event.target.options[event.target.selectedIndex]?.text ?? event.target.value }); }} className="h-10 w-full rounded-lg border border-white/10 bg-[#181818] px-3 text-sm text-white outline-none focus:border-primary">
+                    <option value="All">All services</option>
+                    {providers.map((provider) => <option key={provider.id} value={provider.id}>{provider.name}</option>)}
+                  </select>
+                </label>
+                <Button variant="ghost" className="h-9 justify-self-start px-2 text-xs text-primary sm:col-span-2 lg:col-span-5" onClick={() => { setLanguageFilter('All'); setGenre('All'); setMinimumRating(7); setRuntimeFilter('Any'); setProviderFilter('All'); trackEvent('filters_cleared'); }}>
                   Clear filters
                 </Button>
               </div>
             )}
           </div>
-          {isLoading ? (
-            <div className="space-y-3 px-4 sm:px-8 lg:px-12"><Skeleton className="h-5 w-40" /><div className="flex gap-2 overflow-hidden">{[0, 1, 2, 3, 4].map((item) => <Skeleton key={item} className="h-[240px] min-w-[158px] sm:h-[200px] sm:min-w-[280px]" />)}</div></div>
+          {(isLoading || isFiltering) ? (
+            <div className="space-y-3 px-5 sm:px-8 lg:px-12"><Skeleton className="h-5 w-40" /><div className="flex gap-2 overflow-hidden">{[0, 1, 2, 3, 4].map((item) => <Skeleton key={item} className="h-[240px] min-w-[158px] sm:h-[200px] sm:min-w-[280px]" />)}</div></div>
           ) : shelves.map((shelf) => (
-            <div key={shelf.title}>
-              <h2 className="mb-3 px-4 text-base font-bold tracking-[-0.025em] text-white sm:px-8 lg:px-12">{shelf.title}</h2>
-              <div className={isFilteredView ? 'grid grid-cols-2 gap-2 px-4 sm:grid-cols-2 sm:px-8 lg:grid-cols-3 lg:px-12 xl:grid-cols-4' : 'shelf-scroll flex gap-2 overflow-x-auto px-4 pb-2 sm:gap-1.5 sm:px-8 lg:px-12'}>
-                {shelf.items.length === 0 && <p className="py-8 text-sm text-white/55">No movies found. Try another title.</p>}
+            <div key={shelf.title} className="mx-5 sm:mx-8 lg:mx-12">
+              <h2 className="mb-3 text-base font-bold tracking-[-0.025em] text-white">{shelf.title}</h2>
+              <div className={isFilteredView ? 'grid grid-cols-2 gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4' : 'shelf-scroll flex gap-2 overflow-x-auto pb-2 sm:gap-1.5'}>
+                {shelf.items.length === 0 && <p className="py-8 text-sm text-white/55">No movies or series found. Try different filters.</p>}
                 {shelf.items.map((movie) => (
-                  <button key={`${shelf.title}-${movie.id}`} className={`movie-card group relative overflow-hidden rounded-md bg-card text-left sm:h-[200px] sm:rounded-sm ${isFilteredView ? 'aspect-[2/3] h-auto w-full sm:aspect-auto' : 'h-[240px] w-[158px] min-w-[158px] shrink-0 sm:w-[280px] sm:min-w-[280px]'}`} onClick={() => openMovie(movie)} aria-label={`View details for ${movie.title}`}>
+                  <button key={`${shelf.title}-${movieKey(movie)}`} className={`movie-card group relative overflow-hidden rounded-md bg-card text-left sm:h-[200px] sm:rounded-sm ${isFilteredView ? 'aspect-[2/3] h-auto w-full sm:aspect-auto' : 'h-[240px] w-[158px] min-w-[158px] shrink-0 sm:w-[280px] sm:min-w-[280px]'}`} onClick={() => openMovie(movie)} aria-label={`View details for ${movie.title}`}>
                     <picture className="block h-full w-full">
                       <source media="(max-width: 639px)" srcSet={movie.poster || movie.backdrop} />
                       <img src={movie.backdrop || movie.poster} alt="" className="h-full w-full object-cover transition duration-300 group-hover:scale-110" loading="lazy" />
                     </picture>
                     <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/90 via-black/10 to-transparent" />
+                    <span className="pointer-events-none absolute left-2 top-2 rounded bg-black/70 px-1.5 py-1 text-[10px] font-bold uppercase tracking-wide text-white/85">{movie.mediaType === 'tv' ? 'Series' : 'Movie'}</span>
+                    {feedback[movieKey(movie)] === 'liked' && <span className="pointer-events-none absolute right-2 top-2 grid size-7 place-items-center rounded-full bg-primary text-white"><ThumbsUp className="size-3.5" /></span>}
+                    {feedback[movieKey(movie)] === 'watched' && <span className="pointer-events-none absolute right-2 top-2 grid size-7 place-items-center rounded-full bg-white/90 text-black"><Eye className="size-3.5" /></span>}
                     <h3 className="pointer-events-none absolute inset-x-2.5 bottom-2.5 line-clamp-2 text-sm font-black leading-tight tracking-[-0.035em] text-white drop-shadow-lg sm:inset-x-3 sm:text-base">{movie.title}</h3>
                     <div className="pointer-events-none absolute inset-0 ring-1 ring-inset ring-white/5 transition group-hover:ring-white/20" />
                   </button>
@@ -655,7 +804,7 @@ export default function Home() {
                 <div className="absolute inset-x-0 bottom-0 p-4 sm:p-6">
                   <h2 id="movie-detail-title" className="text-2xl font-black text-white sm:text-4xl">{activeMovie.title}</h2>
                   <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-white/70">
-                    <span>{activeMovie.year}</span><span>•</span><span className="flex items-center gap-1 text-amber-300"><Star className="size-3.5 fill-current" /> {activeMovie.rating}</span>
+                    <Badge variant="outline" className="border-white/20 text-white/75">{activeMovie.mediaType === 'tv' ? 'Series' : 'Movie'}</Badge><span>{activeMovie.year}</span><span>•</span><span className="flex items-center gap-1 text-amber-300"><Star className="size-3.5 fill-current" /> {activeMovie.rating}</span>
                     {'runtime' in activeMovie && typeof activeMovie.runtime === 'number' && activeMovie.runtime > 0 && <><span>•</span><span>{formatRuntime(activeMovie.runtime)}</span></>}
                   </div>
                 </div>
@@ -666,14 +815,19 @@ export default function Home() {
                 <p className="text-sm leading-6 text-white/75">{activeMovie.description || 'No synopsis is available yet.'}</p>
                 <div className="flex flex-wrap gap-2">{activeMovie.genres.map((item) => <Badge key={item} variant="outline" className="border-white/15 text-white/70">{item}</Badge>)}</div>
                 <div className="flex flex-wrap gap-2">
-                  {'trailerKey' in activeMovie && activeMovie.trailerKey && <a href={`https://www.youtube.com/watch?v=${activeMovie.trailerKey}`} target="_blank" rel="noreferrer" className="inline-flex h-10 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-white hover:bg-primary/80"><Play className="size-4 fill-current" /> Play trailer</a>}
-                  <Button variant="outline" className="h-10 border-white/15 bg-white/5 text-white" onClick={() => toggleSaved(activeMovie.id)}>{saved.includes(activeMovie.id) ? <Check /> : <Bookmark />} {saved.includes(activeMovie.id) ? 'Saved to my list' : 'Add to my list'}</Button>
+                  {'trailerKey' in activeMovie && activeMovie.trailerKey && <a href={`https://www.youtube.com/watch?v=${activeMovie.trailerKey}`} target="_blank" rel="noreferrer" onClick={() => trackEvent('trailer_opened', { media_type: activeMovie.mediaType ?? 'movie' })} className="inline-flex h-10 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-white hover:bg-primary/80"><Play className="size-4 fill-current" /> Play trailer</a>}
+                  <Button variant="outline" className="h-10 border-white/15 bg-white/5 text-white" onClick={() => toggleSaved(activeMovie)}>{saved.includes(movieKey(activeMovie)) ? <Check /> : <Bookmark />} {saved.includes(movieKey(activeMovie)) ? 'Saved to my list' : 'Add to my list'}</Button>
+                </div>
+                <div className="flex flex-wrap gap-2 border-t border-white/10 pt-4" aria-label="Your feedback">
+                  <Button variant="outline" aria-pressed={feedback[movieKey(activeMovie)] === 'liked'} className={`h-9 border-white/15 ${feedback[movieKey(activeMovie)] === 'liked' ? 'bg-primary text-white' : 'bg-white/5 text-white'}`} onClick={() => updateFeedback(activeMovie, 'liked')}><ThumbsUp className="size-4" /> Like</Button>
+                  <Button variant="outline" aria-pressed={feedback[movieKey(activeMovie)] === 'disliked'} className={`h-9 border-white/15 ${feedback[movieKey(activeMovie)] === 'disliked' ? 'bg-primary text-white' : 'bg-white/5 text-white'}`} onClick={() => updateFeedback(activeMovie, 'disliked')}><ThumbsDown className="size-4" /> Not for me</Button>
+                  <Button variant="outline" aria-pressed={feedback[movieKey(activeMovie)] === 'watched'} className={`h-9 border-white/15 ${feedback[movieKey(activeMovie)] === 'watched' ? 'bg-white text-black' : 'bg-white/5 text-white'}`} onClick={() => updateFeedback(activeMovie, 'watched')}><Eye className="size-4" /> Watched</Button>
                 </div>
                 {'providers' in activeMovie && activeMovie.providers.length > 0 && (
                   <div><h3 className="text-sm font-bold">Available to stream in India</h3><div className="mt-3 flex flex-wrap items-center gap-3">{activeMovie.providers.map((provider) => <div key={provider.id} className="flex items-center gap-2 rounded-lg bg-white/5 p-2 pr-3 text-xs">{provider.logo && <img src={provider.logo} alt="" className="size-7 rounded-md" />}<span>{provider.name}</span></div>)}{activeMovie.providerLink && <a href={activeMovie.providerLink} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-xs text-primary">View options <ExternalLink className="size-3" /></a>}</div><p className="mt-2 text-[10px] text-white/35">Streaming availability supplied by JustWatch.</p></div>
                 )}
                 {'cast' in activeMovie && activeMovie.cast.length > 0 && <div><h3 className="text-sm font-bold">Cast</h3><div className="scrollbar-hidden mt-3 flex gap-3 overflow-x-auto pb-2">{activeMovie.cast.map((person) => <div key={person.id} className="w-20 shrink-0 text-center">{person.photo ? <img src={person.photo} alt={person.name} className="mx-auto size-16 rounded-full object-cover" /> : <div className="mx-auto grid size-16 place-items-center rounded-full bg-white/10"><Film className="size-5" /></div>}<p className="mt-2 truncate text-xs font-semibold">{person.name}</p><p className="truncate text-[10px] text-white/45">{person.character}</p></div>)}</div></div>}
-                {'recommendations' in activeMovie && activeMovie.recommendations.length > 0 && <div><h3 className="text-sm font-bold">More like this</h3><div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">{activeMovie.recommendations.slice(0, 6).map((movie) => <button key={movie.id} className="group relative aspect-[2/3] overflow-hidden rounded-md text-left sm:aspect-video" onClick={() => openMovie(movie)}><picture className="block h-full w-full"><source media="(max-width: 639px)" srcSet={movie.poster || movie.backdrop} /><img src={movie.backdrop || movie.poster} alt="" className="h-full w-full object-cover transition group-hover:scale-105" /></picture><span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 to-transparent px-2 pb-2 pt-6 text-xs font-bold">{movie.title}</span></button>)}</div></div>}
+                {'recommendations' in activeMovie && activeMovie.recommendations.length > 0 && <div><h3 className="text-sm font-bold">More like this</h3><div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">{activeMovie.recommendations.slice(0, 6).map((movie) => <button key={movieKey(movie)} className="group relative aspect-[2/3] overflow-hidden rounded-md text-left sm:aspect-video" onClick={() => openMovie(movie)}><picture className="block h-full w-full"><source media="(max-width: 639px)" srcSet={movie.poster || movie.backdrop} /><img src={movie.backdrop || movie.poster} alt="" className="h-full w-full object-cover transition group-hover:scale-105" /></picture><span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 to-transparent px-2 pb-2 pt-6 text-xs font-bold">{movie.title}</span></button>)}</div></div>}
               </div>
           </dialog>
         </>
