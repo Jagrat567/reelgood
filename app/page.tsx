@@ -604,17 +604,20 @@ export default function Home() {
             )}
           </div>
           {isLoading ? (
-            <div className="space-y-3 px-4 sm:px-8 lg:px-12"><Skeleton className="h-5 w-40" /><div className="flex gap-2 overflow-hidden">{[0, 1, 2, 3, 4].map((item) => <Skeleton key={item} className="h-[200px] min-w-[78vw] max-w-[300px] sm:min-w-[280px]" />)}</div></div>
+            <div className="space-y-3 px-4 sm:px-8 lg:px-12"><Skeleton className="h-5 w-40" /><div className="flex gap-2 overflow-hidden">{[0, 1, 2, 3, 4].map((item) => <Skeleton key={item} className="h-[240px] min-w-[158px] sm:h-[200px] sm:min-w-[280px]" />)}</div></div>
           ) : shelves.map((shelf) => (
             <div key={shelf.title}>
               <h2 className="mb-3 px-4 text-base font-bold tracking-[-0.025em] text-white sm:px-8 lg:px-12">{shelf.title}</h2>
-              <div className={isFilteredView ? 'grid grid-cols-1 gap-2 px-4 sm:grid-cols-2 sm:px-8 lg:grid-cols-3 lg:px-12 xl:grid-cols-4' : 'shelf-scroll flex gap-1.5 overflow-x-auto px-4 pb-2 sm:px-8 lg:px-12'}>
+              <div className={isFilteredView ? 'grid grid-cols-2 gap-2 px-4 sm:grid-cols-2 sm:px-8 lg:grid-cols-3 lg:px-12 xl:grid-cols-4' : 'shelf-scroll flex gap-2 overflow-x-auto px-4 pb-2 sm:gap-1.5 sm:px-8 lg:px-12'}>
                 {shelf.items.length === 0 && <p className="py-8 text-sm text-white/55">No movies found. Try another title.</p>}
                 {shelf.items.map((movie) => (
-                  <button key={`${shelf.title}-${movie.id}`} className={`movie-card group relative h-[200px] overflow-hidden rounded-sm bg-card text-left ${isFilteredView ? 'w-full' : 'w-[78vw] max-w-[320px] min-w-[78vw] shrink-0 sm:w-[280px] sm:min-w-[280px]'}`} onClick={() => openMovie(movie)} aria-label={`View details for ${movie.title}`}>
-                    <img src={movie.backdrop || movie.poster} alt="" className="h-full w-full object-cover transition duration-300 group-hover:scale-110" loading="lazy" />
+                  <button key={`${shelf.title}-${movie.id}`} className={`movie-card group relative overflow-hidden rounded-md bg-card text-left sm:h-[200px] sm:rounded-sm ${isFilteredView ? 'aspect-[2/3] h-auto w-full sm:aspect-auto' : 'h-[240px] w-[158px] min-w-[158px] shrink-0 sm:w-[280px] sm:min-w-[280px]'}`} onClick={() => openMovie(movie)} aria-label={`View details for ${movie.title}`}>
+                    <picture className="block h-full w-full">
+                      <source media="(max-width: 639px)" srcSet={movie.poster || movie.backdrop} />
+                      <img src={movie.backdrop || movie.poster} alt="" className="h-full w-full object-cover transition duration-300 group-hover:scale-110" loading="lazy" />
+                    </picture>
                     <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/90 via-black/10 to-transparent" />
-                    <h3 className="pointer-events-none absolute inset-x-3 bottom-2.5 line-clamp-2 text-sm font-black leading-tight tracking-[-0.035em] text-white drop-shadow-lg sm:text-base">{movie.title}</h3>
+                    <h3 className="pointer-events-none absolute inset-x-2.5 bottom-2.5 line-clamp-2 text-sm font-black leading-tight tracking-[-0.035em] text-white drop-shadow-lg sm:inset-x-3 sm:text-base">{movie.title}</h3>
                     <div className="pointer-events-none absolute inset-0 ring-1 ring-inset ring-white/5 transition group-hover:ring-white/20" />
                   </button>
                 ))}
@@ -670,7 +673,7 @@ export default function Home() {
                   <div><h3 className="text-sm font-bold">Available to stream in India</h3><div className="mt-3 flex flex-wrap items-center gap-3">{activeMovie.providers.map((provider) => <div key={provider.id} className="flex items-center gap-2 rounded-lg bg-white/5 p-2 pr-3 text-xs">{provider.logo && <img src={provider.logo} alt="" className="size-7 rounded-md" />}<span>{provider.name}</span></div>)}{activeMovie.providerLink && <a href={activeMovie.providerLink} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-xs text-primary">View options <ExternalLink className="size-3" /></a>}</div><p className="mt-2 text-[10px] text-white/35">Streaming availability supplied by JustWatch.</p></div>
                 )}
                 {'cast' in activeMovie && activeMovie.cast.length > 0 && <div><h3 className="text-sm font-bold">Cast</h3><div className="scrollbar-hidden mt-3 flex gap-3 overflow-x-auto pb-2">{activeMovie.cast.map((person) => <div key={person.id} className="w-20 shrink-0 text-center">{person.photo ? <img src={person.photo} alt={person.name} className="mx-auto size-16 rounded-full object-cover" /> : <div className="mx-auto grid size-16 place-items-center rounded-full bg-white/10"><Film className="size-5" /></div>}<p className="mt-2 truncate text-xs font-semibold">{person.name}</p><p className="truncate text-[10px] text-white/45">{person.character}</p></div>)}</div></div>}
-                {'recommendations' in activeMovie && activeMovie.recommendations.length > 0 && <div><h3 className="text-sm font-bold">More like this</h3><div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">{activeMovie.recommendations.slice(0, 6).map((movie) => <button key={movie.id} className="group relative aspect-video overflow-hidden rounded-md text-left" onClick={() => openMovie(movie)}><img src={movie.backdrop || movie.poster} alt="" className="h-full w-full object-cover transition group-hover:scale-105" /><span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 to-transparent px-2 pb-2 pt-6 text-xs font-bold">{movie.title}</span></button>)}</div></div>}
+                {'recommendations' in activeMovie && activeMovie.recommendations.length > 0 && <div><h3 className="text-sm font-bold">More like this</h3><div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">{activeMovie.recommendations.slice(0, 6).map((movie) => <button key={movie.id} className="group relative aspect-[2/3] overflow-hidden rounded-md text-left sm:aspect-video" onClick={() => openMovie(movie)}><picture className="block h-full w-full"><source media="(max-width: 639px)" srcSet={movie.poster || movie.backdrop} /><img src={movie.backdrop || movie.poster} alt="" className="h-full w-full object-cover transition group-hover:scale-105" /></picture><span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 to-transparent px-2 pb-2 pt-6 text-xs font-bold">{movie.title}</span></button>)}</div></div>}
               </div>
           </dialog>
         </>
