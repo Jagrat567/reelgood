@@ -13,6 +13,7 @@ import {
   Heart,
   LoaderCircle,
   Play,
+  RefreshCw,
   Search,
   Shuffle,
   SlidersHorizontal,
@@ -208,6 +209,27 @@ function movieKey(movie: Pick<Movie, 'id' | 'mediaType'>) {
   return `${movie.mediaType ?? 'movie'}:${movie.id}`;
 }
 
+function prioritizeUnseen(next: Movie[], current: Movie[]) {
+  const visibleKeys = new Set(current.slice(0, 10).map(movieKey));
+  return [
+    ...next.filter((movie) => !visibleKeys.has(movieKey(movie))),
+    ...next.filter((movie) => visibleKeys.has(movieKey(movie))),
+  ];
+}
+
+function rotateShelves(next: HomeShelves, current: HomeShelves): HomeShelves {
+  return {
+    ...next,
+    trending: prioritizeUnseen(next.trending, current.trending),
+    popular: prioritizeUnseen(next.popular, current.popular),
+    nowPlaying: prioritizeUnseen(next.nowPlaying, current.nowPlaying),
+    newReleases: prioritizeUnseen(next.newReleases, current.newReleases),
+    actionHits: prioritizeUnseen(next.actionHits, current.actionHits),
+    comedyFavorites: prioritizeUnseen(next.comedyFavorites, current.comedyFavorites),
+    scifiWorlds: prioritizeUnseen(next.scifiWorlds, current.scifiWorlds),
+  };
+}
+
 function trackEvent(name: string, properties?: Record<string, string | number | boolean>) {
   try {
     track(name, properties);
@@ -239,6 +261,8 @@ export default function Home() {
   const [providers, setProviders] = useState<StreamingProvider[]>([]);
   const [remoteFilteredResults, setRemoteFilteredResults] = useState<Movie[] | null>(null);
   const [isFiltering, setIsFiltering] = useState(false);
+  const [catalogRefresh, setCatalogRefresh] = useState(0);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [selectedMovie, setSelectedMovie] = useState<Movie | null>(null);
   const [details, setDetails] = useState<MovieDetails | null>(null);
   const [detailsLoading, setDetailsLoading] = useState(false);
@@ -278,18 +302,27 @@ export default function Home() {
         return response.json() as Promise<HomeShelves>;
       })
       .then((data) => {
-        setHomeShelves(data);
-        if (featuredRequestRef.current === 0) {
+        setHomeShelves((current) => current && catalogRefresh > 0 ? rotateShelves(data, current) : data);
+        if (catalogRefresh === 0 && featuredRequestRef.current === 0) {
           const initialPool = data.topPicks.length ? data.topPicks : data.trending;
           setFeaturedPool(initialPool);
           setFeaturedMovie(initialPool[0] ?? fallbackMovies[0]);
         }
         setIsLive(true);
       })
-      .catch(() => setIsLive(false))
-      .finally(() => setIsLoading(false));
+      .catch(() => {
+        if (catalogRefresh > 0) {
+          setHomeShelves((current) => current ? rotateShelves(current, current) : current);
+        } else {
+          setIsLive(false);
+        }
+      })
+      .finally(() => {
+        setIsLoading(false);
+        setIsRefreshing(false);
+      });
     return () => controller.abort();
-  }, []);
+  }, [catalogRefresh]);
 
   useEffect(() => {
     const preferredPool = featuredPool.filter((movie) => feedback[movieKey(movie)] !== 'disliked' && feedback[movieKey(movie)] !== 'watched');
@@ -460,7 +493,13 @@ export default function Home() {
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [genre, languageFilter, minimumRating, providerFilter, query, runtimeFilter]);
+  }, [catalogRefresh, genre, languageFilter, minimumRating, providerFilter, query, runtimeFilter]);
+
+  function refreshShelves() {
+    setIsRefreshing(true);
+    setCatalogRefresh((current) => current + 1);
+    trackEvent('catalog_refreshed', { filtered: activeFilterCount > 0 });
+  }
 
   useEffect(() => {
     catalogRef.current = [
@@ -619,7 +658,7 @@ export default function Home() {
   const activeMovie = details ?? selectedMovie;
 
   return (
-    <main className="min-h-screen overflow-hidden bg-background text-foreground">
+    <main className="min-h-screen w-full max-w-full overflow-hidden bg-background text-foreground">
       <div className="ambient-glow" aria-hidden="true" />
       <header className="netflix-header relative z-20 mx-auto flex h-16 max-w-[1440px] items-center justify-between px-4 sm:h-20 sm:px-8 lg:px-12">
         <a href="#top" className="flex items-center gap-2.5" aria-label="Reelgood home">
@@ -689,16 +728,28 @@ export default function Home() {
         <div className="mx-auto max-w-[1440px] space-y-8 sm:space-y-9">
           <div className="px-5 sm:px-8 lg:px-12">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <Button
-                variant="outline"
-                className="h-10 rounded-full border-white/15 bg-white/[.04] px-4 text-white hover:bg-white/10"
-                onClick={() => setFiltersOpen((current) => !current)}
-                aria-expanded={filtersOpen}
-                aria-controls="movie-filters"
-              >
-                <SlidersHorizontal className="size-4" /> Filters
-                {activeFilterCount > 0 && <Badge className="ml-1 min-w-5 justify-center bg-primary px-1.5 text-white">{activeFilterCount}</Badge>}
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  className="h-10 rounded-full border-white/15 bg-white/[.04] px-4 text-white hover:bg-white/10"
+                  onClick={() => setFiltersOpen((current) => !current)}
+                  aria-expanded={filtersOpen}
+                  aria-controls="movie-filters"
+                >
+                  <SlidersHorizontal className="size-4" /> Filters
+                  {activeFilterCount > 0 && <Badge className="ml-1 min-w-5 justify-center bg-primary px-1.5 text-white">{activeFilterCount}</Badge>}
+                </Button>
+                <Button
+                  variant="outline"
+                  className="h-10 rounded-full border-white/15 bg-white/[.04] px-4 text-white hover:bg-white/10"
+                  onClick={refreshShelves}
+                  disabled={isLoading || isRefreshing}
+                  aria-label="Refresh all recommendation sections"
+                >
+                  <RefreshCw className={`size-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+                  {isRefreshing ? 'Refreshing…' : 'Refresh'}
+                </Button>
+              </div>
               <p className="text-xs text-white/45">Movies + series · Bollywood + Hollywood · Rated 7.0 and above</p>
             </div>
             {filtersOpen && (
@@ -807,6 +858,11 @@ export default function Home() {
                     <Badge variant="outline" className="border-white/20 text-white/75">{activeMovie.mediaType === 'tv' ? 'Series' : 'Movie'}</Badge><span>{activeMovie.year}</span><span>•</span><span className="flex items-center gap-1 text-amber-300"><Star className="size-3.5 fill-current" /> {activeMovie.rating}</span>
                     {'runtime' in activeMovie && typeof activeMovie.runtime === 'number' && activeMovie.runtime > 0 && <><span>•</span><span>{formatRuntime(activeMovie.runtime)}</span></>}
                   </div>
+                  <div className="mt-3 flex items-center gap-2" aria-label="Your feedback">
+                    <Button variant="outline" size="icon" title="Like" aria-label="Like" aria-pressed={feedback[movieKey(activeMovie)] === 'liked'} className={`feedback-button size-9 rounded-full border-white/25 p-0 ${feedback[movieKey(activeMovie)] === 'liked' ? 'is-selected is-liked border-emerald-400 bg-emerald-500 text-white hover:bg-emerald-500' : 'bg-black/55 text-white backdrop-blur'}`} onClick={() => updateFeedback(activeMovie, 'liked')}><ThumbsUp className="size-4" /></Button>
+                    <Button variant="outline" size="icon" title="Dislike" aria-label="Dislike" aria-pressed={feedback[movieKey(activeMovie)] === 'disliked'} className={`feedback-button size-9 rounded-full border-white/25 p-0 ${feedback[movieKey(activeMovie)] === 'disliked' ? 'is-selected is-disliked border-red-500 bg-red-600 text-white hover:bg-red-600' : 'bg-black/55 text-white backdrop-blur'}`} onClick={() => updateFeedback(activeMovie, 'disliked')}><ThumbsDown className="size-4" /></Button>
+                    <Button variant="outline" aria-pressed={feedback[movieKey(activeMovie)] === 'watched'} className={`feedback-button h-9 rounded-full border-white/25 px-3 ${feedback[movieKey(activeMovie)] === 'watched' ? 'is-selected bg-white text-black' : 'bg-black/55 text-white backdrop-blur'}`} onClick={() => updateFeedback(activeMovie, 'watched')}><Eye className="size-4" /> Watched</Button>
+                  </div>
                 </div>
               </div>
               <div className="space-y-5 p-4 sm:space-y-6 sm:p-6">
@@ -817,11 +873,6 @@ export default function Home() {
                 <div className="flex flex-wrap gap-2">
                   {'trailerKey' in activeMovie && activeMovie.trailerKey && <a href={`https://www.youtube.com/watch?v=${activeMovie.trailerKey}`} target="_blank" rel="noreferrer" onClick={() => trackEvent('trailer_opened', { media_type: activeMovie.mediaType ?? 'movie' })} className="inline-flex h-10 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-white hover:bg-primary/80"><Play className="size-4 fill-current" /> Play trailer</a>}
                   <Button variant="outline" className="h-10 border-white/15 bg-white/5 text-white" onClick={() => toggleSaved(activeMovie)}>{saved.includes(movieKey(activeMovie)) ? <Check /> : <Bookmark />} {saved.includes(movieKey(activeMovie)) ? 'Saved to my list' : 'Add to my list'}</Button>
-                </div>
-                <div className="flex flex-wrap gap-2 border-t border-white/10 pt-4" aria-label="Your feedback">
-                  <Button variant="outline" aria-pressed={feedback[movieKey(activeMovie)] === 'liked'} className={`h-9 border-white/15 ${feedback[movieKey(activeMovie)] === 'liked' ? 'bg-primary text-white' : 'bg-white/5 text-white'}`} onClick={() => updateFeedback(activeMovie, 'liked')}><ThumbsUp className="size-4" /> Like</Button>
-                  <Button variant="outline" aria-pressed={feedback[movieKey(activeMovie)] === 'disliked'} className={`h-9 border-white/15 ${feedback[movieKey(activeMovie)] === 'disliked' ? 'bg-primary text-white' : 'bg-white/5 text-white'}`} onClick={() => updateFeedback(activeMovie, 'disliked')}><ThumbsDown className="size-4" /> Not for me</Button>
-                  <Button variant="outline" aria-pressed={feedback[movieKey(activeMovie)] === 'watched'} className={`h-9 border-white/15 ${feedback[movieKey(activeMovie)] === 'watched' ? 'bg-white text-black' : 'bg-white/5 text-white'}`} onClick={() => updateFeedback(activeMovie, 'watched')}><Eye className="size-4" /> Watched</Button>
                 </div>
                 {'providers' in activeMovie && activeMovie.providers.length > 0 && (
                   <div><h3 className="text-sm font-bold">Available to stream in India</h3><div className="mt-3 flex flex-wrap items-center gap-3">{activeMovie.providers.map((provider) => <div key={provider.id} className="flex items-center gap-2 rounded-lg bg-white/5 p-2 pr-3 text-xs">{provider.logo && <img src={provider.logo} alt="" className="size-7 rounded-md" />}<span>{provider.name}</span></div>)}{activeMovie.providerLink && <a href={activeMovie.providerLink} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-xs text-primary">View options <ExternalLink className="size-3" /></a>}</div><p className="mt-2 text-[10px] text-white/35">Streaming availability supplied by JustWatch.</p></div>
